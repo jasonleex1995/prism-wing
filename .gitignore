@@ -1,0 +1,8 @@
+# 생성 산출물 — sim.mjs 가 만든다(재생성 가능). 커밋하지 않는다.
+tools/report*/
+
+# macOS
+.DS_Store
+
+# 에디터·도구 로컬 설정
+.claude/

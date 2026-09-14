@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+
+  "order": ["normal", "fire", "water", "grass"],
+
+  "investable": ["fire", "water", "grass"],
+
+  "matrix": {
+    "normal": { "normal": 1.0, "fire": 1.0, "water": 1.0, "grass": 1.0 },
+    "fire":   { "normal": 1.0, "fire": 1.0, "water": 0.5, "grass": 2.0 },
+    "water":  { "normal": 1.0, "fire": 2.0, "water": 1.0, "grass": 0.5 },
+    "grass":  { "normal": 1.0, "fire": 0.5, "water": 2.0, "grass": 1.0 }
+  }
+}

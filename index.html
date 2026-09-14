@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRISM WING — 종스크롤 비행 슈팅 게임</title>
+<!--
+  정본 v1.4 §9.1 — 유일한 엔트리. <script type="module">
+  §9.1 — ES 모듈은 file:// 에서 동작하지 않는다. 로컬 개발 = `python3 -m http.server 8000` 고정.
+         번들러·node_modules 없음. 의존성 0, 빌드 스텝 0.
+  §1.1 — 논리 1280×720 고정. CSS 중앙 정렬 레터박스. 배경은 캔버스 밖 = 순수 레터박스 여백.
+  §1.1 — 데스크톱 키보드 전용, 터치·모바일 미지원(확정).
+-->
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #000;
+    overflow: hidden;
+  }
+  body {
+    display: grid;
+    place-items: center;
+    /* §1.1 — 데스크톱 키보드 전용. 터치 제스처가 게임 키를 가로채지 않게 한다 */
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  /* §1.1 — 백킹스토어는 1280·min(dpr,2) 이고 CSS 크기는 main.js 가 매 프레임 맞춘다 */
+  canvas#game {
+    display: block;
+    image-rendering: auto;
+  }
+  /* §9.3 — 로드 실패는 조용히 지나가지 않는다. 폴백이 없으므로 화면이 이유를 말해야 한다 */
+  #fatal {
+    max-width: 900px;
+    padding: 24px 28px;
+    color: #FF2E88;
+    background: #0E1116;
+    border: 2px solid #FF2E88;
+    border-radius: 4px;
+    font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre-wrap;
+    overflow: auto;
+    max-height: 80vh;
+  }
+</style>
+</head>
+<body>
+  <canvas id="game" width="1280" height="720"></canvas>
+  <pre id="fatal" hidden></pre>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

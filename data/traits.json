@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "maxLevel": 5,
+  "traits": [
+    {
+      "id": "regen",
+      "name": "자연 재생",
+      "desc": "초당 N HP 가 회복된다",
+      "effect": {
+        "kind": "regenHpPerSec",
+        "values": [
+          0.5,
+          0.75,
+          1.0,
+          1.5,
+          3.0
+        ]
+      }
+    },
+    {
+      "id": "lifesteal",
+      "name": "흡혈",
+      "desc": "HP 가 50% 이하일 때만, 적에게 준 피해의 N% 가 HP 로 돌아온다",
+      "effect": {
+        "kind": "lifestealPct",
+        "values": [
+          0.005,
+          0.0075,
+          0.01,
+          0.0125,
+          0.015
+        ],
+        "hpRatio": 0.5
+      }
+    },
+    {
+      "id": "shield",
+      "name": "쉴드 생성",
+      "desc": "N초마다 피격 1회를 통째로 막는 쉴드가 생긴다",
+      "effect": {
+        "kind": "shieldEverySec",
+        "values": [
+          18,
+          15,
+          12,
+          9,
+          5
+        ]
+      }
+    }
+  ]
+}

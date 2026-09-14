@@ -1,0 +1,385 @@
+{
+  "schemaVersion": 1,
+
+  "loop": {
+    "tickHz": 60,
+    "maxStepsPerFrame": 6,
+    "maxFrameGapMs": 250,
+    "interpolate": true
+  },
+
+  "view": {
+    "logicalW": 1280,
+    "logicalH": 720,
+    "arena": { "x": 350, "y": 0, "w": 580, "h": 720 },
+    "panelLeftW": 350,
+    "panelRightW": 350,
+    "bandTopH": 48,
+    "bandHpH": 24,
+    "bandXpH": 24,
+    "playerBoundsInset": { "top": 56, "bottom": 56, "left": 20, "right": 20 },
+    "spawnLineY": -40,
+    "spawnPadPx": 40,
+    "minViewportW": 1024,
+    "minViewportH": 576,
+    "maxDpr": 2
+  },
+
+  "collide": {
+    "gridCellPx": 64
+  },
+
+  "caps": {
+    "playerBullets": 512,
+    "enemyBullets": 768,
+    "enemies": 576,
+    "pickups": 384,
+    "zones": 64,
+    "drones": 8,
+    "particles": 400,
+    "terrain": 16,
+    "telegraphs": 128,
+    "overflow": {
+      "playerBullet": "rejectSpawn",
+      "enemyBullet": "rejectSpawn",
+      "enemy": "defer",
+      "pickup": "merge",
+      "zone": "rejectSpawn",
+      "drone": "rejectSpawn",
+      "telegraph": "deferAttack",
+      "particle": "evictOldest", "terrain": "rejectSpawn"
+    }
+  },
+
+  "player": {
+    "hpMax": 100,
+    "spriteRadius": 14,
+    "hitboxRadius": 4,
+    "moveSpeed": 280,
+    "moveResponseTau": 0.0,
+    "diagonalNormalize": true,
+    "iframeSec": 1.0,
+    "defenseBase": 0,
+    "damageFloorRatio": 0.25,
+    "lowHpThreshold": 0.30,
+    "lowHpCriticalThreshold": 0.15,
+    "magnetRadius": 90,
+    "xpDriftPxSec": 90,
+    "startStance": "normal",
+    "stanceSwitchCooldown": 0.0,
+    "stancePersistAcrossStages": true,
+    "elementCapPerElement": 4,
+    "elementCapTotal": 12,
+    "weaponSlots": 6,
+    "elementSlots": 4,
+    "passiveSlots": 6,
+    "lives": 0
+  },
+
+  "status": {
+    "slowMoveSpeedMul": 0.55,
+    "actionSlowMul": 0.55,
+    "stackMode": "refresh",
+    "resistAffects": "duration"
+  },
+
+  "elite": {
+    "perWaveMax": 1,
+    "hpMult": 2.5,
+    "sizeMult": 1.4,
+    "contactDmgMul": 1.5,
+    "xpMult": 3.0,
+    "bandAllowed": ["line", "turret", "bruiser"],
+    "elementAllowed": ["fire", "water", "grass"]
+  },
+
+  "boss": {
+    "partCount": 4,
+    "partRegen": false,
+    "partHitPriority": "outermostFirst",
+    "phaseThresholds": [0.6, 0.3],
+    "phaseTransitionSec": 1.5,
+    "timerPausesOnPhaseTransition": true,
+    "introSec": 3.0,
+    "entryWipeSec": 0.7,
+    "timerStartsAfterIntro": true,
+    "timerExpire": "kill",
+    "mobilityPenalty": 1.5,
+    "partXpRatio": 0.012,
+    "escalateFireRateMul": 1.55,
+    "escalateFireRateMax": 2.60,
+    "coreElement": "normal",
+    "coreEmitterId": "bossCore",
+    "partNormalForbidden": true,
+    "partElementDistinctMin": 2,
+    "partThemeElementMax": 4,
+    "armorElementNotTheme": false,
+    "armorPartCountRange": [2, 2],
+    "armorCoreRatioMax": 15,
+    "optionalPartArmorRatio": 0.20,
+    "partReachMinPx": 32,
+    "ghostXpRatio": 0.25, "midBossSummonsAllowed": ["mbNest"],
+    "bossSummonsAllowed": ["thornKing", "tetrarch"],
+    "finale": {
+      "partCount": 5,
+      "armorPartCount": 3,
+      "exemptRules": ["R4", "R6"],
+      "allowNormalPeripheral": true
+    }
+  },
+
+  "fairness": {
+    "minTelegraphSec": 0.55,
+    "beamLockSec": 0.6,
+    "beamBlockRadiusPx": 18,
+    "beamBlockRatio": 0.6,
+    "minStunTelegraphSec": 1.5,
+    "maxStunSec": 1.0,
+    "maxBulletSpeed": 260,
+    "maxAimedBulletSpeed": 200,
+    "statusBulletSpeedMul": 0.6,
+    "minBulletRadiusPx": 4,
+    "minGapWidthPx": 46,
+    "minSpawnRadiusPx": 140,
+    "maxSimultaneousEnemyBullets": 320,
+    "maxBulletAgeSec": 6,
+    "enemyConcurrentMax": 42, "introConcurrentMax": 400,
+    "swarmConcurrentMax": 200,
+    "telegraphConcurrentMaxPerEntity": 2,
+    "telegraphConcurrentMaxGlobal": 84,
+    "playerWeaponsExempt": true
+  },
+
+  "terrain": {
+    "radiusPx": 72,
+    "scrollSpeedPx": 42,
+    "everySec": 2.2,
+    "spawnIn": ["early", "midboss", "boss"],
+    "bossEntryCount": 4,
+    "fadeSec": 0.8,
+    "inertia": { "responseTauSec": 0.35 },
+    "heat": { "fullSec": 1.5, "stallSec": 0.6, "coolSec": 1.0 }
+  },
+  "hud": {
+    "hitboxAlwaysVisible": true,
+    "showElementBudget": true,
+    "fontHeroPx": 40,
+    "fontLargePx": 26,
+    "fontMediumPx": 20,
+    "fontBodyPx": 16,
+    "fontSmallPx": 14,
+    "panelPadPx": 16,
+    "keycapBoxPx": 28,
+    "bossHpBarH": 12,
+    "hpBarSegGapPx": 5,
+    "xpBarH": 6,
+    "hpBarSegCount": 5,
+    "panelCacheDirtyOnly": true,
+    "parGhostEnabled": true,
+    "elementMatrixInPanel": true,
+    "noHitIndicator": true,
+    "stanceHintTargetsMajorityElement": true,
+    "icons": ["xpDiamond", "statusSlow", "statusStun"]
+  },
+
+  "passiveHooks": {
+    "forward":   { "rateKey": "cooldownSec",    "countKey": "count", "pierceApplies": true,  "speedKeys": ["projSpeed"],                "durationKeys": ["lifetimeSec"], "areaKeys": [],                           "beamKeys": [],                            "orbitKeys": [],                                                "dmgStat": null, "lifesteal": true },
+    "fan":       { "rateKey": "cooldownSec",    "countKey": "count", "pierceApplies": true,  "speedKeys": ["projSpeed"],                "durationKeys": ["lifetimeSec"], "areaKeys": [],                           "beamKeys": [],                            "orbitKeys": [],                                                "dmgStat": null, "lifesteal": true },
+    "seeker":    { "rateKey": "cooldownSec",    "countKey": "count", "pierceApplies": true,  "speedKeys": ["projSpeed"],                "durationKeys": ["lifetimeSec"], "areaKeys": [],                           "beamKeys": [],                            "orbitKeys": [],                                                "dmgStat": null, "lifesteal": false },
+    "boomerang": { "rateKey": "cooldownSec",    "countKey": "count", "pierceApplies": false, "speedKeys": ["projSpeed", "returnSpeed"], "durationKeys": ["lifetimeSec"], "areaKeys": [],                           "beamKeys": [],                            "orbitKeys": [],                                                "dmgStat": null, "lifesteal": true },
+    "missile":   { "rateKey": "cooldownSec",    "countKey": "count", "pierceApplies": false, "speedKeys": ["projSpeed"],                "durationKeys": ["lifetimeSec"], "areaKeys": ["blastRadius"],              "beamKeys": [],                            "orbitKeys": [],                                                "dmgStat": "areaDmgMul", "lifesteal": true },
+    "pinball":   { "rateKey": "cooldownSec",    "countKey": "count", "pierceApplies": false, "speedKeys": [],                          "durationKeys": ["lifetimeSec"], "areaKeys": [],                           "beamKeys": [],                            "orbitKeys": [],                                                "dmgStat": null, "lifesteal": false },
+
+    "lance":     { "rateKey": "cooldownSec",    "countKey": null,    "pierceApplies": false, "speedKeys": [],                           "durationKeys": [],              "areaKeys": [],                           "beamKeys": ["beamWidthPx", "rangePx"],    "orbitKeys": [],                                                "dmgStat": "beamDmgMul", "lifesteal": true },
+    "beam":      { "rateKey": "hitCooldownSec", "countKey": null,    "pierceApplies": false, "speedKeys": [],                           "durationKeys": [],              "areaKeys": [],                           "beamKeys": ["beamWidthPx", "rangePx"],    "orbitKeys": [],                                                "dmgStat": "beamDmgMul", "lifesteal": false },
+    "chain":     { "rateKey": "cooldownSec",    "countKey": null,    "pierceApplies": false, "speedKeys": [],                           "durationKeys": [],              "areaKeys": [],                           "beamKeys": ["chainRangePx", "acquireRadius"], "orbitKeys": [],                                            "dmgStat": "beamDmgMul", "lifesteal": false },
+
+    "aura":      { "rateKey": null,             "countKey": null,    "pierceApplies": false, "speedKeys": [],                           "durationKeys": [],              "areaKeys": ["radius"],                   "beamKeys": [],                            "orbitKeys": [],                                                "dmgStat": null, "lifesteal": false },
+    "nova":      { "rateKey": "intervalSec",    "countKey": null,    "pierceApplies": false, "speedKeys": [],                           "durationKeys": [],              "areaKeys": ["radius", "evoRing2Radius"], "beamKeys": [],                            "orbitKeys": [],                                                "dmgStat": "areaDmgMul", "lifesteal": true },
+    "barrage":   { "rateKey": "cooldownSec",    "countKey": null,    "pierceApplies": false, "speedKeys": [],                           "durationKeys": [],              "areaKeys": ["blastRadius"],              "beamKeys": [],                            "orbitKeys": [],                                                "dmgStat": "areaDmgMul", "lifesteal": false },
+
+    "orbit":     { "rateKey": "hitCooldownSec", "countKey": null,    "pierceApplies": false, "speedKeys": [],                           "durationKeys": [],              "areaKeys": [],                           "beamKeys": [],                            "orbitKeys": ["orbitRadius", "projRadius", "angularSpeedDegSec"], "dmgStat": "orbitMul", "lifesteal": true },
+    "drone":     { "rateKey": "droneFireSec",   "countKey": null,    "pierceApplies": false, "speedKeys": [],                           "durationKeys": [],              "areaKeys": [],                           "beamKeys": [],                            "orbitKeys": ["droneRangePx"],                                  "dmgStat": "orbitMul", "lifesteal": false }
+  },
+
+  "input": {
+    "layout": "code",
+    "socd": "lastInput",
+    "pauseOnBlur": true,
+    "bindings": {
+      "move": ["ArrowLeft", "ArrowUp", "ArrowRight", "ArrowDown"],
+      "stanceNormal": "KeyQ",
+      "stanceFire": "KeyW",
+      "stanceWater": "KeyE",
+      "stanceGrass": "KeyR",
+      "pause": "Escape",
+      "options": "KeyO",
+      "draftPick": ["Digit1", "Digit2", "Digit3"],
+      "suppress": ["Tab"],
+      "grab": "Space",
+      "confirm": "Enter",
+      "mute": "KeyM",
+      "cursor": ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]
+    }
+  },
+
+  "palette": {
+    "element":    { "normal": "#DCE6F0", "fire": "#FF6B2C", "water": "#31C0FF", "grass": "#5FD13B" },
+    "elementCvd": { "normal": "#F2F6FA", "fire": "#FFA83A", "water": "#2E86E0", "grass": "#1F6B3A" },
+    "threat":     { "enemyBullet": "#FF2E88", "telegraph": "#FF2E88", "bulletCore": "#FFFFFF", "outline": "#0A0C10" },
+    "status":     { "band": "#FFB000" },
+    "pickup":     { "xp": "#EAF2FF", "trait": "#FFC93C" },
+    "enemyBody": "#20242C",
+    "partDestroyed": "#3A3A3A",
+    "neutralGray": "#7A8290",
+    "hud": {
+      "panelBg": "#0E1116",
+      "panelRule": "#2A3038",
+      "textPrimary": "#DCE6F0",
+      "textDim": "#7A8290",
+      "hpFill": "#DCE6F0",
+      "accent": "#FFC93C", "evolution": "#A98BFF"
+    },
+    "bg": {
+      "maxSaturation": 0.25,
+      "maxLightness": 0.28,
+      "cvdMaxLightness": 0.22,
+      "parallaxLayers": 2,
+      "maxScrollSpeed": 90
+    }
+  },
+
+  "visual": {
+    "iframeBlinkHz": 8.0,
+    "hpBar": {
+      "hPx": 5,
+      "wPx": 48,
+      "gapPx": 5,
+      "trackAlpha": 0.85,
+      "gatePostWPx": 2,
+      "gatePostOverhangPx": 3
+    },
+    "stance": {
+      "ringExpandSec": 0.18,
+      "ringMaxRadiusPx": 28,
+      "ringStrokePx": 2,
+      "emptyDesatSec": 0.18,
+      "dotRadiusPx": 4,
+      "dotRingPx": 2,
+      "auraAlpha": 0.40,
+      "pipPx": 7,
+      "pipPxCvd": 10,
+      "pipGapPx": 2,
+      "pipOffsetYPx": 14,
+      "hintPulseHz": 1.0,
+      "hintPulseAlpha": [0.40, 1.0]
+    },
+    "playerBullet": {
+      "coreRadiusRatio": 0.45,
+      "coreLightnessAdd": 25
+    },
+    "glyph": {
+      "bodyRatio": 0.42,
+      "maxPx": 22,
+      "occludedSkip": true,
+      "lodMinBodyPx": 16,
+      "lodDegradedBodyPx": 24
+    },
+    "telegraph": {
+      "strokePx": 2,
+      "dashPx": 6,
+      "dashTightenAtPct": 0.70,
+      "dashTightenMul": 0.5,
+      "airAlpha": 0.50,
+      "fillAlpha": 0.50,
+      "emphasisBySpeed": { "1.0": 1.0, "1.5": 1.15, "2.0": 1.30, "3.0": 1.50 }
+    },
+    "band": {
+      "plateAlpha": 0.30,
+      "contentOpaque": true
+    },
+    "zone": {
+      "fillAlpha": 0.30,
+      "pulseHz": 1.0
+    },
+    "wipe": {
+      "bandPx": 28,
+      "flashAlpha": 0.35
+    },
+    "terrain": {
+      "fillAlpha": 0.22,
+      "patternAlpha": 0.16,
+      "iconAlpha": 0.80,
+      "iconPx": 22,
+      "heatPulseHz": 0.8,
+      "heatWarnAt": 0.6
+    },
+    "timer": {
+      "warnScale": 1.15,
+      "warnPulseHz": 0.5,
+      "alertScale": 1.30,
+      "alertPulseHz": 1.0
+    },
+    "trail": {
+      "ghostCount": 3,
+      "ghostAlpha": 0.30
+    },
+    "hitFx": {
+      "numberTargets": ["boss", "midboss", "elite"],
+      "numberAggregateSec": 0.15,
+      "numberMinPx": 14,
+      "numberOutlinePx": 2,
+      "numberLifeSec": 0.7,
+      "numberDriftPx": 18,
+      "markerPolicy": "maxOnly",
+      "markerCooldownSecPerEntity": 0.25,
+      "superFreezeSec": 0.04,
+      "superFreezeScale": 1.12,
+      "resistArcSweepDeg": 160,
+      "resistArcLifeSec": 0.25,
+      "resistArcStrokePx": 4,
+      "particles": { "super": 3, "neutral": 1, "resist": 0 }
+    },
+    "a11y": {
+      "cbMode": "off",
+      "reduceFlash": false,
+      "screenShake": true,
+      "shakeMaxPx": 6,
+      "fullscreenFlashMaxPerSec": 3,
+      "fullscreenFlashMaxAlpha": 0.35
+    },
+    "text": {
+      "family": "system-ui, -apple-system, 'Malgun Gothic', sans-serif",
+      "minPx": 14,
+      "outlinePx": 2
+    },
+    "dot": {
+      "logoScale": 5,
+      "titleSubScale": 4,
+      "titlePromptScale": 2,
+      "logoSlant": 0.42,
+      "logoTopTint": 0.55,
+      "logoBottomShade": 0.5
+    }
+  },
+
+  "render": {
+    "playerFxCompositeAlpha": 0.45,
+    "killFxCompositeAlpha": 0.55,
+    "playerBulletMaxAlpha": 0.80,
+    "playerBulletDensityRef": 64,
+    "playerBulletMinAlpha": 0.20,
+    "playerBulletMaxRadiusPx": 10,
+    "particleMaxAlpha": 0.60,
+    "particleMaxLifeSec": 0.35,
+    "fxMinRealMs": 50,
+    "targetFps": 60,
+    "degradeOnFrameMs": 14.0,
+    "degradeRecoverFrames": 120
+  },
+
+  "audio": {
+    "busGain": { "sfx": 0.8, "bgm": 0.32 },
+    "cueRateLimitPerSec": 12
+  }
+}

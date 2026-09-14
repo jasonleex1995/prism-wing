@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "startWeaponId": "forward",
+  "spawnYPx": 250,
+  "spawnGapPx": 78,
+  "hpMul": 0.6,
+  "safeHpFloor": 0.5,
+  "terrainDwellSec": 1.5,
+  "completeHoldSec": 2.5,
+  "steps": [
+    { "id": "move", "minSec": 2, "title": "방향키로 이동하기",
+      "lines": ["방향키로 상하좌우를 한번 이동해보세요."],
+      "goal": { "kind": "move", "value": 420 }, "grant": null, "reset": false, "pickup": true,
+      "spawn": [] },
+
+    { "id": "autofire", "minSec": 3, "title": "자동 공격",
+      "lines": ["발사 버튼 없이 공격이 자동으로 나갑니다.", "앞에 있는 적 3기를 없애보세요."],
+      "goal": { "kind": "clear", "value": 0 }, "grant": null, "reset": false, "pickup": false,
+      "spawn": [ { "archetypeId": "drifter", "element": "normal", "count": 3 } ] },
+
+    { "id": "levelup", "minSec": 7, "title": "레벨업",
+      "lines": ["움직여서 점선 원 안으로 적이 남긴 경험치를 흡수하세요.", "레벨업하게 되면, 카드를 통해 무기 강화, 새로운 무기 추가, 패시브 추가, 속성을 선택할 수 있습니다."],
+      "goal": { "kind": "level", "value": 2 }, "grant": null, "reset": false, "pickup": true,
+      "spawn": [] },
+
+    { "id": "stance", "minSec": 4, "title": "속성 바꾸기",
+      "lines": ["QWER을 통해 속성을 바꿔서 공격해보세요.", "상성표를 통해 적에게 더 강한 공격을 넣을 수 있습니다."],
+      "goal": { "kind": "superHit", "value": 3 }, "grant": { "invest": ["fire", "water", "grass"] }, "reset": true, "pickup": true,
+      "spawn": [ { "archetypeId": "drifter", "element": "fire", "count": 2 }, { "archetypeId": "drifter", "element": "water", "count": 2 }, { "archetypeId": "drifter", "element": "grass", "count": 2 } ] },
+
+    { "id": "terrain", "minSec": 6, "title": "지형 효과",
+      "lines": ["어떠한 지형은 특수한 기능을 가지고 있습니다.", "한번 지형을 다양하게 체험해보세요."],
+      "goal": { "kind": "terrain", "value": 3 }, "grant": null, "reset": false, "pickup": true,
+      "spawn": [] },
+
+    { "id": "boss", "minSec": 3, "title": "보호막 모듈",
+      "lines": ["보스의 몇몇 모듈들은 보호막이 있어서 타격을 입지 않습니다.", "보호막이 없는 모듈들을 없애면 보호막이 해제됩니다."],
+      "goal": { "kind": "boss", "value": 0 }, "grant": null, "reset": false, "pickup": true,
+      "spawn": [] }
+  ]
+}
