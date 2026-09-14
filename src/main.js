@@ -400,8 +400,14 @@ async function boot() {
   //   · 시차 점은 화면 전체에 뿌린다(아레나 아님). 이유는 draw.js 의 drawBackground 주석 참조.
   //   ★ 새 값을 만들지 않았다 — 스크롤 속도는 palette.bg.maxScrollSpeed, 갭 클램프는 loop.maxFrameGapMs 를
   //     그대로 쓴다. 둘 다 이미 정본에 있는 값이라 data/*.json · schema.mjs · 정본 표가 움직이지 않는다.
+  //   ㊿-zh 바탕은 panelBg — 예전 평면 배경과 **같은 색**이다. 파생 바탕(L*12.6 무채색)은 회색이라
+  //     textDim 대비를 4.88 → 4.35 로 깎아 WCAG AA(4.5) 아래로 내렸다(사용자가 「글자가 잘 안 보인다」로 먼저 잡아냈다).
+  //     흐름은 그대로 두고 밝기만 되돌린다 — 바탕이 어두워진 만큼 점과의 델타가 커져 별은 오히려 또렷해진다.
   const menuBgWorld = { data, run: null };
-  const menuBgRect = { x: 0, y: 0, w: view.logicalW, h: view.logicalH };
+  const menuBgOpts = {
+    rect: { x: 0, y: 0, w: view.logicalW, h: view.logicalH },
+    base: pal.hud.panelBg,
+  };
   const menuFx = { bgScroll: 0 };
   // §6.5(v1.10 ㊿-s) 어트랙트 — 타이틀의 «무입력» 시계(실시간 ms — 타이틀은 런이 없어 배속 1, §0.2.1)와 «끝» 깃발.
   //   · 키·클릭 = 시계를 되돌리고, 어트랙트 중이면 깃발을 세운다 → 다음 프레임에 그 판이 끝난다(라벨이 약속한 그대로 — 「아무 키나 누르면」).
@@ -869,7 +875,7 @@ async function boot() {
 
   // ── §6.5 메뉴 렌더 (world 없이도 그린다) ──────────────────────────────
   function menuBg() {
-    drawBackground(ctx, menuBgWorld, pal, menuFx, menuBgRect);   // ㊿-zg 게임과 같은 배경(무채색 시차 스크롤)
+    drawBackground(ctx, menuBgWorld, pal, menuFx, menuBgOpts);   // ㊿-zg·zh 게임과 같은 별 흐름 + 예전 바탕색
   }
   function mText(text, y, sizePx, color, weight, align) {
     ctx.textAlign = align || 'center';
