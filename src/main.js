@@ -890,6 +890,15 @@ async function boot() {
     dotText(ctx, '[SPACE/ENTER] START    [O] OPTIONS', view.logicalW / 2, view.logicalH / 2 + 46,
       d.titlePromptScale, pal.hud.textDim);
     // ㊴ — 「QWER 스탠스 · 상성 ×2 …」 요약 줄 삭제(사용자 2026-09-05). 규칙은 문장이 아니라 **튜토리얼이 가르친다**.
+    //   ㊿-zf 사용자(2026-09-14) 「시작 화면에 Produced by JxS Studio 비슷한 느낌을 내고 싶어」
+    //   → 「PRESENTED BY JXS STUDIO로 차라리 가자!」. 「PRESENTED BY」는 80년대 오락실 타이틀의 정석 표현이고,
+    //     이 게임은 스스로 «194X식»을 표방한다. 소문자 x 는 못 쓴다 — 도트 폰트는 대문자 53자뿐이다(§7.9.1).
+    //   ★ 배치는 **화면 맨 아래**다. 프롬프트 바로 밑에 놓으면 같은 배율·같은 색이라 「START」와 시선을 다툰다.
+    //     기판이 저작권 줄을 화면 가장자리로 밀어낸 이유와 같다 — 떨어뜨리면 색을 새로 만들지 않아도 위계가 선다.
+    //   ★ 새 토큰을 만들지 않는다 — 배율은 프롬프트와 같은 titlePromptScale, 색은 textDim 을 그대로 쓴다.
+    //     값을 하나 더 만들면 rules.visual.dot 는 closed 집합이라 schema.mjs 와 정본 표까지 함께 움직인다(§9.3).
+    dotText(ctx, 'PRESENTED BY JXS STUDIO', view.logicalW / 2, view.logicalH - 44,
+      d.titlePromptScale, pal.hud.textDim);
   }
   // ㊿ 사용자(2026-09-06): 「튜토리얼, 노멀, 하드, 헬 이렇게 구분」 — 디재스터 삭제.
   const DIFF_LABEL = { normal: 'NORMAL', hard: 'HARD', hell: 'HELL' };   // ㊿-z 도트 폰트는 영문만 찍는다(§7.9.1)
