@@ -34,7 +34,7 @@ import { initRun, tickRun, advanceStage, applyStageClearHeal, stageEntry, PHASE,
 import { tally } from './core/score.js';
 import { seedHex } from './core/rng.js';
 import { dotText, dotLogo, dotScale } from './render/dotfont.js';   // §7.9.1(v1.10 ㊿-z) 도트 폰트
-import { resolvePalette, drawWorld, makeInterp, captureInterp, makeFx, updateFx, rgba } from './render/draw.js';
+import { resolvePalette, drawWorld, drawBackground, makeInterp, captureInterp, makeFx, updateFx, rgba } from './render/draw.js';
 import { drawPanels, drawDraft, drawResults, drawTutorial } from './render/hud.js';
 import { makeTutorialState, tickTutorial, tutorialStep } from './core/tutorial.js';   // §6.7 ㊴·㊻
 
@@ -392,6 +392,17 @@ async function boot() {
   const ctx = canvas.getContext('2d', { alpha: false });
   const pal = resolvePalette(rules);
   const kb = makeKeyboard(rules);
+  // §7.9(v1.10 ㊿-zg) 메뉴 배경 — 사용자(2026-09-14) 「배경이 너무 밋밋?하달까나?」
+  //   ★ 새 그림을 그리지 않는다. **게임이 쓰는 배경 함수를 그대로 부른다** — 「실제 게임과 유사」의 가장 정확한 답이고,
+  //     drawBackground 는 이미 `THEME_AB[rid] || [0,0] // 테마 없으면(타이틀 등) 무채색` 로 이 쓰임을 예정해 두었다.
+  //   · world 대신 최소 스텁을 넘긴다 — 그 함수가 읽는 것은 data.rules(view · palette.bg)와 run 뿐이다.
+  //     run: null → 테마 없음 → 무채색. 메뉴는 아직 어느 스테이지도 고르지 않았으니 색이 없는 것이 옳다.
+  //   · 시차 점은 화면 전체에 뿌린다(아레나 아님). 이유는 draw.js 의 drawBackground 주석 참조.
+  //   ★ 새 값을 만들지 않았다 — 스크롤 속도는 palette.bg.maxScrollSpeed, 갭 클램프는 loop.maxFrameGapMs 를
+  //     그대로 쓴다. 둘 다 이미 정본에 있는 값이라 data/*.json · schema.mjs · 정본 표가 움직이지 않는다.
+  const menuBgWorld = { data, run: null };
+  const menuBgRect = { x: 0, y: 0, w: view.logicalW, h: view.logicalH };
+  const menuFx = { bgScroll: 0 };
   // §6.5(v1.10 ㊿-s) 어트랙트 — 타이틀의 «무입력» 시계(실시간 ms — 타이틀은 런이 없어 배속 1, §0.2.1)와 «끝» 깃발.
   //   · 키·클릭 = 시계를 되돌리고, 어트랙트 중이면 깃발을 세운다 → 다음 프레임에 그 판이 끝난다(라벨이 약속한 그대로 — 「아무 키나 누르면」).
   //     시각 비교가 아니라 깃발이다 — 타이머 정밀도가 낮은 브라우저에서 «시작한 그 순간»의 입력이 묻히지 않게(검토).
@@ -671,6 +682,12 @@ async function boot() {
     const elapsed = now - last;
     last = now;
 
+    // ㊿-zg 메뉴 배경의 스크롤 시계 — 런이 없는 화면(TITLE·DIFFICULTY·OPTIONS·TOO_SMALL)에서도 하늘은 흐른다.
+    //   여기서 감는다: frameBody 는 상태마다 일찍 return 하므로, 갈라지기 **전에** 한 번만 감아야 전 화면이 같은 속도로 흐른다.
+    //   §10.1 갭 클램프를 그대로 쓴다 — 탭을 오래 비웠다 돌아왔을 때 배경이 순간이동하지 않게(updateFx 와 같은 처방).
+    menuFx.bgScroll = (menuFx.bgScroll
+      + rules.palette.bg.maxScrollSpeed * Math.min(elapsed, rules.loop.maxFrameGapMs) / 1000) % 4096;
+
     // ★ 엣지는 매 프레임 소비해 prev 를 갱신한다(상태가 어긋나지 않게). ★v1.5 키 통일:
     //   «Space 또는 Enter» = 확정/시작/스킵/재시작/선택(전 화면 동일) · Escape = 일시정지/뒤로 ·
     //   O = 옵션 · M = 음소거. (이전엔 화면마다 Space/Enter 가 갈렸다 — 플레이 피드백 반영.)
@@ -852,8 +869,7 @@ async function boot() {
 
   // ── §6.5 메뉴 렌더 (world 없이도 그린다) ──────────────────────────────
   function menuBg() {
-    ctx.fillStyle = pal.hud.panelBg;
-    ctx.fillRect(0, 0, view.logicalW, view.logicalH);
+    drawBackground(ctx, menuBgWorld, pal, menuFx, menuBgRect);   // ㊿-zg 게임과 같은 배경(무채색 시차 스크롤)
   }
   function mText(text, y, sizePx, color, weight, align) {
     ctx.textAlign = align || 'center';

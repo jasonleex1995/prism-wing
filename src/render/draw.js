@@ -484,9 +484,14 @@ const THEME_AB = {
   desert: [10, 34], forest: [-26, 22], bog: [-6, 16], finale: [22, 8],
 };
 
-function drawBackground(ctx, world, pal, fx) {
+//   ㊿-zg 사용자(2026-09-14) 「첫 화면과 스테이지 선택 화면이 살짝 아쉬워 — 배경이 너무 밋밋?하달까나?」
+//   → 메뉴도 이 함수를 부른다. 아래 「테마 없으면(타이틀 등)」 주석이 원래 그 쓰임을 적어 둔 자리다.
+//   ★ rect 는 시차 점을 가둘 사각형이다. 생략하면 아레나(= 플레이 화면의 프레이밍).
+//     메뉴는 HUD 패널이 없어 화면 전체를 넘긴다 — 아레나로 가두면 x=350·930 에 세로 이음매가 생기고,
+//     패널이 없는 화면에서 그 선은 «프레이밍»이 아니라 «렌더 버그»로 읽힌다.
+export function drawBackground(ctx, world, pal, fx, rect) {
   const v = world.data.rules.view;
-  const a = v.arena;
+  const a = rect === undefined ? v.arena : rect;
   const rid = world.run && world.run.order ? world.run.order[world.run.stageIndex] : null;
   const ab = THEME_AB[rid] || [0, 0];                        // 테마 없으면(타이틀 등) 무채색
   const base = labToHex(pal.bgMaxLightness * 100 * 0.45, ab[0] * 0.5, ab[1] * 0.5);
