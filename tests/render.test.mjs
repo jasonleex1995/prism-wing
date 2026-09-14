@@ -22,7 +22,7 @@ import { tickRun, initRun } from '../src/core/stage.js';
 import { makeTutorialState, tickTutorial } from '../src/core/tutorial.js';
 import { spawnEnemy } from '../src/core/state.js';
 import { bossHook } from '../src/core/boss.js';
-import { resolvePalette, drawWorld, makeInterp, captureInterp, makeFx, updateFx, bulletDensityAlpha } from '../src/render/draw.js';
+import { resolvePalette, drawWorld, drawBackground, makeInterp, captureInterp, makeFx, updateFx, bulletDensityAlpha } from '../src/render/draw.js';
 import { drawPanels, drawResults, drawDraft, wrapLines, passiveWeaponLine, weaponRowLayout, clockText } from '../src/render/hud.js';
 import { BODY_STATS } from '../src/core/schema.mjs';
 import { giveWeapon as giveW, passiveAffectsSlot, recomputeEff } from '../src/core/state.js';
@@ -401,7 +401,7 @@ suite('render — ㊿-q 회귀 (방패 링 · 진화 카드)', () => {
 function layoutCtx() {
   const state = { globalAlpha: 1, globalCompositeOperation: 'source-over', fillStyle: '#000', strokeStyle: '#000', lineWidth: 1, font: '16px sans-serif', textAlign: 'left', textBaseline: 'alphabetic' };
   const stack = [];
-  const rec = { texts: [], rects: [] };
+  const rec = { texts: [], rects: [], arcs: [] };
   const px = () => { const m = /(\d+(?:\.\d+)?)px/.exec(state.font); return m ? Number(m[1]) : 16; };
   const target = {
     canvas: { width: 1280, height: 720 },
@@ -411,7 +411,10 @@ function layoutCtx() {
     createLinearGradient: () => ({ addColorStop() {} }),
     createRadialGradient: () => ({ addColorStop() {} }),
     fillText: (t, x, y) => { rec.texts.push({ t: String(t), x, y, px: px() }); },
-    fillRect: (x, y, w, h) => { rec.rects.push({ x, y, w, h }); },
+    fillRect: (x, y, w, h) => { rec.rects.push({ x, y, w, h, style: state.fillStyle, alpha: state.globalAlpha }); },
+    //  ㊿-zi — 배경의 시차 점은 arc + fill 로 찍힌다. «그려진 원»을 읽으려면 둘 다 기록해야 한다.
+    arc: (x, y, r) => { rec._arc = { x, y, r }; },
+    fill: () => { if (rec._arc !== undefined) { rec.arcs.push({ ...rec._arc, style: state.fillStyle }); rec._arc = undefined; } },
   };
   const ctx = new Proxy(target, {
     get(t, k) { if (k in t) return t[k]; if (k in state) return state[k]; return () => {}; },
@@ -724,5 +727,73 @@ suite('render — ㊿-ze3 개체 HP 바', () => {
     const bx = 500 - hb.wPx / 2;
     const mine = rec.rects.filter((r) => r.w === hb.wPx && r.h === hb.hPx && Math.abs(r.x - bx) < 0.5);
     assert.eq(mine.length, 0, '평범한 적에 바가 붙었다 — §7.7 밀도 논거가 깨진다');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// ㊿-zi — 메뉴 배경(§7.9.2). ㊿-zg 가 별을 흐르게 했고 ㊿-zh 가 바탕을 panelBg 로 «되돌렸다» —
+//   되돌린 이유가 대비(WCAG AA)이므로, 그 되돌림이 조용히 풀리면 글자가 다시 안 보인다.
+//   ★ 그런데 그때까지 이 경로를 보는 테스트가 하나도 없었다. 여기서 «그려진 사각형»을 직접 읽는다.
+// ─────────────────────────────────────────────────────────────────────────
+suite('render — ㊿-zi 메뉴 배경', () => {
+  //  main.js 의 menuBg 가 넘기는 것과 «같은» 인자를 만든다(§7.9.2 표).
+  const menuArgs = (d) => [
+    { data: d, run: null },                                   // 테마 없음 → 무채색
+    { bgScroll: 12.5 },                                       // 흐르는 중
+    { rect: { x: 0, y: 0, w: d.rules.view.logicalW, h: d.rules.view.logicalH }, base: d.rules.palette.hud.panelBg },
+  ];
+
+  test('바탕은 panelBg 이고 «화면 전체»를 덮는다 — 파생 무채색으로 돌아가면 textDim 대비가 AA 아래로 떨어진다', () => {
+    const d = loadData();
+    const v = d.rules.view;
+    const pal = resolvePalette(d.rules);
+    const [world, fx, opts] = menuArgs(d);
+    const { ctx, rec } = layoutCtx();
+    drawBackground(ctx, world, pal, fx, opts);
+    //  ① 첫 사각형 = 바탕. 언제나 화면 전체다(이 줄은 opts.rect 와 무관하다 — 아래 ③ 이 rect 를 본다).
+    const base = rec.rects[0];
+    assert.ok(base !== undefined, '바탕 사각형이 그려졌다');
+    assert.eq(`${base.x},${base.y},${base.w},${base.h}`, `0,0,${v.logicalW},${v.logicalH}`,
+      '바탕 사각형은 화면 전체');
+    //  ② 그 색이 panelBg 인가 — 이것이 ㊿-zh 의 전부다.
+    assert.eq(String(base.style).toLowerCase(), String(d.rules.palette.hud.panelBg).toLowerCase(),
+      `★ 바탕 = hud.panelBg (${d.rules.palette.hud.panelBg}) — 파생 무채색은 textDim 대비를 4.88 → 4.16 으로 깎아 AA(4.5) 아래다`);
+    //  ③ ★ opts.rect 가 실제로 «별이 뿌려지는 범위»다 — 바탕 사각형이 아니다(그건 늘 화면 전체라 rect 를 못 본다).
+    //     아레나로 가두면 x=350·930 에 세로 이음매가 생기고, HUD 패널이 없는 메뉴에서 그 선은 «렌더 버그»로 읽힌다.
+    const a = v.arena;
+    assert.ok(rec.arcs.some((c) => c.x < a.x) && rec.arcs.some((c) => c.x > a.x + a.w),
+      `★ 별이 아레나 «밖»에도 뿌려진다 — 아레나로 가두면 x=${a.x}·${a.x + a.w} 에 세로 이음매가 보인다`);
+  });
+
+  test('별은 실제로 그려지고 «흐른다» — 평면 단색으로 돌아가면 잡힌다', () => {
+    const d = loadData();
+    const pal = resolvePalette(d.rules);
+    const [world, , opts] = menuArgs(d);
+    const draw = (scroll) => {
+      const { ctx, rec } = layoutCtx();
+      drawBackground(ctx, world, pal, { bgScroll: scroll }, opts);
+      return rec;
+    };
+    const a = draw(0);
+    assert.gt(a.arcs.length, 20, `★ 시차 점이 그려졌다(실측 ${a.arcs.length}개) — 0이면 배경이 다시 «밋밋»해진 것이다`);
+    //  흐름 — 스크롤을 감으면 점의 y 가 달라진다(x 는 그대로: 세로 스크롤이다)
+    const b = draw(1.5);
+    const ay = a.arcs.map((c) => c.y).join(',');
+    const by = b.arcs.map((c) => c.y).join(',');
+    assert.ok(ay !== by, '★ 스크롤을 감으면 점이 움직인다 — 같으면 정지한 배경이다');
+  });
+
+  test('run 이 있으면 테마 색으로 물든다 — 메뉴(run: null)와 같은 그림이 아니다', () => {
+    const d = loadData();
+    const pal = resolvePalette(d.rules);
+    const opts = { rect: { x: 0, y: 0, w: d.rules.view.logicalW, h: d.rules.view.logicalH } };
+    const shot = (world) => {
+      const { ctx, rec } = layoutCtx();
+      drawBackground(ctx, world, pal, { bgScroll: 0 }, opts);   // base 생략 = 테마에서 파생
+      return rec.arcs.map((c) => c.style).join('|');
+    };
+    const menu = shot({ data: d, run: null });
+    const stage = shot({ data: d, run: { order: ['volcano'], stageIndex: 0 } });
+    assert.ok(menu !== stage, '★ 테마가 있으면 점 색이 다르다 — 메뉴가 무채색인 것이 우연이 아니다');
   });
 });

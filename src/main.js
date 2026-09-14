@@ -401,7 +401,9 @@ async function boot() {
   //   ★ 새 값을 만들지 않았다 — 스크롤 속도는 palette.bg.maxScrollSpeed, 갭 클램프는 loop.maxFrameGapMs 를
   //     그대로 쓴다. 둘 다 이미 정본에 있는 값이라 data/*.json · schema.mjs · 정본 표가 움직이지 않는다.
   //   ㊿-zh 바탕은 panelBg — 예전 평면 배경과 **같은 색**이다. 파생 바탕(L*12.6 무채색)은 회색이라
-  //     textDim 대비를 4.88 → 4.35 로 깎아 WCAG AA(4.5) 아래로 내렸다(사용자가 「글자가 잘 안 보인다」로 먼저 잡아냈다).
+  //     textDim 대비를 4.88 → **4.16** 으로 깎아 WCAG AA(4.5) 아래로 내렸다(사용자가 「글자가 잘 안 보인다」로 먼저 잡아냈다).
+  //     ★ 4.16 은 ㊿-zi 에서 다시 잰 값이다 — 옮겨 오면서 적혀 있던 4.35 는 어느 계산에서 나온 수인지 재현되지 않았다.
+  //     계산: panelBg #0E1116 · textDim #7A8290 · 파생 무채색 rgb(33,33,33) 에 WCAG 상대휘도 공식.
   //     흐름은 그대로 두고 밝기만 되돌린다 — 바탕이 어두워진 만큼 점과의 델타가 커져 별은 오히려 또렷해진다.
   const menuBgWorld = { data, run: null };
   const menuBgOpts = {

@@ -96,7 +96,7 @@ const VACUOUS_WATCH = [
   'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S13', 'S14', 'S16',
   'S19', 'S22', 'S23', 'S24', 'S26', 'S27', 'S28', 'S29',
   'S30', 'S31', 'S32', 'S34', 'S35', 'S36', 'S37', 'S38', 'S39', 'S41',
-  'S47', 'S49', 'S50', 'S51', 'S54', 'S55', 'S56', 'S57', 'S58', 'S59', 'S60', 'S61', 'S62', 'S63', 'S64', 'S65', 'S66', 'S67', 'S68', 'S69', 'REF',
+  'S47', 'S49', 'S50', 'S51', 'S54', 'S55', 'S56', 'S57', 'S58', 'S59', 'S60', 'S61', 'S62', 'S63', 'S64', 'S65', 'S66', 'S67', 'S68', 'S69', 'S70', 'REF',
 ];
 // ★ S38(중간보스 이탈)은 v1.3 콘텐츠 게이트(S27~S40) 중 유일하게 VACUOUS_WATCH 에서
 //   빠져 있어, 중간보스 0행이면 EX('S38',0)이 공허 통과했다. §8.9/curve.midBossCount 가
@@ -4305,6 +4305,46 @@ function S67_canonPrints() {
 //  실제로는 startRun 과 startTutorial 이 같은 식을 따로 적어 **두 곳**이었다. 한 곳(tickDurFor)으로 합쳤고
 //  여기서 그 「정확히 1곳」을 강제한다 — 난이도 speed 가 tickDur 로 들어가는 자리는 하나여야 한다.
 // ===========================================================================
+// ===========================================================================
+//  S70 — 메뉴 배경의 «배선» (§7.9.2 · v1.10 ㊿-zi)
+//  테스트(tests/render.test.mjs)는 drawBackground «함수»가 옵션을 지키는지 보지만, 메뉴가 그 함수를
+//  **어떻게 부르는지**는 못 본다. ㊿-zh 가 되돌린 것이 바로 그 «부르는 법»(base = panelBg)이라,
+//  여기가 풀리면 글자 대비가 다시 AA 아래로 내려간다(textDim vs 파생 무채색 = 4.16).
+// ===========================================================================
+function S70_menuBackground() {
+  const mp = join(ROOT, 'src', 'main.js');
+  if (!existsSync(mp)) { V('S70', 'src/main.js 가 없다 (§7.9.2)'); EX('S70', 1); return; }
+  const lines = readFileSync(mp, 'utf8').split('\n');
+  const code = lines.filter((L) => !/^\s*(\/\/|\*|\/\*)/.test(L)).join('\n');   // 주석 줄 제외
+  let n = lines.length;
+
+  //  ① 메뉴는 «게임의 배경 함수»를 부른다 — 평면 단색 칠로 되돌아가면 여기서 걸린다
+  if (!/function menuBg\(\)\s*\{[^}]*drawBackground\(/.test(code)) {
+    V('S70', 'menuBg() 가 drawBackground 를 부르지 않는다 — 메뉴 배경이 평면 단색으로 돌아갔다 (§7.9.2)');
+  }
+  //  ② 바탕은 hud.panelBg — ㊿-zh 의 전부다
+  if (!/base:\s*pal\.hud\.panelBg/.test(code)) {
+    V('S70', '메뉴 배경의 base 가 pal.hud.panelBg 가 아니다 — 파생 무채색은 textDim 대비를 4.88 → 4.16 으로 깎아 WCAG AA(4.5) 아래다 (§7.9.2)');
+  }
+  //  ③ 시차 점은 «화면 전체» — 아레나로 가두면 패널 없는 메뉴에 세로 이음매가 생긴다
+  if (!/rect:\s*\{\s*x:\s*0,\s*y:\s*0,\s*w:\s*view\.logicalW,\s*h:\s*view\.logicalH\s*\}/.test(code)) {
+    V('S70', '메뉴 배경의 rect 가 화면 전체가 아니다 — 아레나로 가두면 세로 이음매가 «렌더 버그»로 보인다 (§7.9.2)');
+  }
+  //  ④ 테마 없음 — 메뉴는 아직 어느 스테이지도 고르지 않았으니 무채색이어야 한다
+  if (!/run:\s*null/.test(code)) {
+    V('S70', '메뉴 배경에 넘기는 world 의 run 이 null 이 아니다 — 메뉴가 테마 색으로 물든다 (§7.9.2)');
+  }
+  //  ⑤ 스크롤 시계가 «갭 클램프»를 지난다 — 탭을 비웠다 돌아왔을 때 배경이 순간이동하지 않게(§10.1)
+  if (!/bgScroll[\s\S]{0,200}?maxFrameGapMs/.test(code)) {
+    V('S70', '메뉴 배경의 스크롤이 loop.maxFrameGapMs 클램프를 안 지난다 — 탭 복귀 시 배경이 순간이동한다 (§7.9.2 · §10.1)');
+  }
+  //  ⑥ 제작 크레딧(㊿-zf) — 도트 폰트는 대문자뿐이라 JXS 여야 한다(§7.9.1)
+  if (!/dotText\(ctx, 'PRESENTED BY JXS STUDIO'/.test(code)) {
+    V('S70', "타이틀의 제작 크레딧 「PRESENTED BY JXS STUDIO」가 없다 (§7.9.2) — 소문자는 도트 폰트에 없다(§7.9.1)");
+  }
+  EX('S70', n);
+}
+
 function S69_speedDoor() {
   const mp = join(ROOT, 'src', 'main.js');
   if (!existsSync(mp)) { V('S69', 'src/main.js 가 없다 (§6.1)'); EX('S69', 1); return; }
@@ -5081,7 +5121,7 @@ function print() {
     return 1;
   }
   line();
-  line('✓ 전 정적 게이트 통과 (S1~S69 · S20·S33·S40·S46·S48·S52·S53 은 삭제)');
+  line('✓ 전 정적 게이트 통과 (S1~S70 · S20·S33·S40·S46·S48·S52·S53 은 삭제)');
   line();
   return 0;
 }
@@ -5157,6 +5197,7 @@ function main() {
   S67_canonPrints();         // §9.4 v1.10 ㊿-z9 정본의 인쇄 블록 ↔ data/*.json — 값까지 대조한다(S2 는 키만 본다)
   S68_growthBudget();        // §11.1 v1.10 ㊿-ze 성장 예산 «산문 표» ↔ data — S67 의 정의역 밖이라 12년 묵은 수치가 살아 있었다
   S69_speedDoor();           // §6.1 v1.10 ㊿-ze3 배속이 코드에 존재하는 «정확히 1곳»
+  S70_menuBackground();      // §7.9.2 v1.10 ㊿-zi 메뉴 배경의 배선(별 흐름 · panelBg 바탕 · 화면 전체 · 크레딧)
   S66_dotFont();             // §7.9.1 v1.10 ㊿-z 도트 폰트 — 글자판이 격자를 지키고 · 제목판이 제목과 정확히 맞고 · 가장 작은 글자도 minPx 이상
   S51_visibleDamage();       // §8.20 v1.8 가시 피해
 
