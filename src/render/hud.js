@@ -353,7 +353,7 @@ function drawLeftPanel(ctx, world, pal) {
     const lv = world.traits[def.id];
     if (lv <= 0) continue;
     // §11.6 ㉒ — 이름 · Lv · 지금 값(효과 kind 의 표기법). 쉴드는 충전 상태도(«지금 막을 수 있는가»가 곧 조작 정보)
-    const val = fmtTrait(def.effect.kind, def.effect.values[lv - 1]);
+    const val = fmtTrait(def.effect, def.effect.values[lv - 1]);
     const state = def.effect.kind === 'shieldEverySec' ? (world.traitState.shieldReady ? ' · 준비됨' : ' · 충전 중') : '';
     ctx.fillStyle = rgba(pal.hud.accent, 0.9);
     ctx.beginPath(); ctx.arc(pad + 5, ty, 4, 0, Math.PI * 2); ctx.fill();
@@ -668,12 +668,24 @@ const STAT_FMT = {
   elementBonusMul: 'mul',                 // ★ §3.1 의 k — 가산이 아니라 «대입»이다
 };
 
-/** §11.6 ㉒ 특성 효과의 표기법 — kind 마다 단위가 다르다(초당 HP · 피해의 % · 초). 미지의 kind 는 숫자 그대로(숨기지 않는다). */
-function fmtTrait(kind, v) {
+/** §11.6 ㉒ 특성 효과의 표기법 — kind 마다 단위가 다르다(초당 HP · 피해의 % · 초). 미지의 kind 는 숫자 그대로(숨기지 않는다).
+ *  ★ ㊿-zj — kind 가 아니라 effect 를 받는다. 흡혈의 «HP 조건»은 effect.hpRatio(데이터)에서 읽는다 —
+ *    예전엔 「HP 50%↓」를 글자로 박아 두어, 게이트가 허용하는 0.3~0.6 사이로 값을 바꾸면 HUD 가 거짓말했다.
+ *  ★ ㊿-zj — 흡혈에는 «조준 무기»를 함께 적는다(사용자 2026-09-17). 조건은 ㊿-za 부터 게임에 걸려 있었지만
+ *    화면 어디에도 안 보여서, 카드만 보면 모든 무기로 흡혈되는 것처럼 읽혔다. */
+function fmtTrait(effect, v) {
+  const kind = effect.kind;
   if (kind === 'regenHpPerSec') return `초당 ${num(v)} HP`;
-  if (kind === 'lifestealPct') return `${num(v * 100)}% (HP 50%↓)`;
+  if (kind === 'lifestealPct') return `${num(v * 100)}% (HP ${num(effect.hpRatio * 100)}%↓ · 조준 무기)`;
   if (kind === 'shieldEverySec') return `${num(v)}초마다`;
   return num(v);
+}
+
+/** 특성 카드(c.traitId)의 정의 — 없으면 조용히 넘어가지 않는다(§9.3). */
+function traitDefOf(world, id) {
+  const list = world.data.traits.traits;
+  for (let i = 0; i < list.length; i += 1) if (list[i].id === id) return list[i];
+  throw new Error(`hud: 미지의 특성 "${id}" (§11.6)`);
 }
 
 /** 무기 파라미터의 한글 이름. 없는 키는 원래 이름을 그대로 보인다(조용히 숨기지 않는다). */
@@ -800,7 +812,8 @@ function cardDelta(world, c) {
   }
   if (c.category === 'trait') {
     // §11.6 ㉒ — 증분 줄: 「얼마나 좋아지는가」. 표기는 효과 kind 가 정한다(초당 HP · % · 초)
-    out.push(c.from === null ? fmtTrait(c.kind, c.to) : `${fmtTrait(c.kind, c.from)} → ${fmtTrait(c.kind, c.to)}`);
+    const eff = traitDefOf(world, c.traitId).effect;
+    out.push(c.from === null ? fmtTrait(eff, c.to) : `${fmtTrait(eff, c.from)} → ${fmtTrait(eff, c.to)}`);
     return out;
   }
   if (c.category === 'weaponLevel') {

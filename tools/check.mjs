@@ -3460,6 +3460,19 @@ function S59_traits() {
     if (!isObj(t) || !isObj(t.effect) || t.effect.kind !== 'lifestealPct') continue;
     const hr = t.effect.hpRatio;
     if (!num(hr) || hr < 0.3 || hr > 0.6) V('S59', `traits[${t.id}].effect.hpRatio = ${hr} ∉ [0.3, 0.6] — 흡혈은 «위험할 때만» 듣는 안전망이다 (§11.6 ②')`);
+    //  ②'' ★ ㊿-zj 카드가 «조건 둘»을 전부 말하는가 — 사용자(2026-09-17)가 「흡혈에 조건이 제대로 안 달려 있다」로 잡았다.
+    //    조건은 게임에 걸려 있었지만(㊿-za) 카드는 HP 조건만 적고 무기 조건은 한 글자도 없었다 → 모든 무기로 흡혈되는 것처럼 읽혔다.
+    //    · HP 조건: 문장의 «NN%» 가 effect.hpRatio 와 같아야 한다(글자로 박은 수가 데이터와 갈라지지 않게)
+    //    · 무기 조건: 흡혈이 «안 드는» 패밀리가 하나라도 있으면 문장이 그 조건(「조준」)을 적어야 한다
+    const desc = typeof t.desc === 'string' ? t.desc : '';
+    if (num(hr) && desc.indexOf(`${Math.round(hr * 100)}%`) < 0) {
+      V('S59', `traits[${t.id}].desc 에 HP 조건 «${Math.round(hr * 100)}%» 가 없다 — effect.hpRatio(${hr})와 카드 문장이 갈라졌다 (§11.6 ②'')`);
+    }
+    const hk = D.rules && D.rules.passiveHooks;
+    const gated = isObj(hk) && Object.keys(hk).some((f) => isObj(hk[f]) && hk[f].lifesteal === false);
+    if (gated && desc.indexOf('조준') < 0) {
+      V('S59', `traits[${t.id}].desc 가 무기 조건을 말하지 않는다 — 흡혈이 안 드는 무기가 있는데 카드엔 «조준» 이 없다. 모든 무기로 흡혈되는 것처럼 읽힌다 (§11.6 ②'' · ㊿-zj)`);
+    }
   }
   for (const t of td.traits) {
     if (!isObj(t) || !isObj(t.effect) || !Array.isArray(t.effect.values)) continue;

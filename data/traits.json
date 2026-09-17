@@ -20,7 +20,7 @@
     {
       "id": "lifesteal",
       "name": "흡혈",
-      "desc": "HP 가 50% 이하일 때만, 적에게 준 피해의 N% 가 HP 로 돌아온다",
+      "desc": "HP 50% 이하일 때, 직접 조준하는 무기로 준 피해의 N% 가 HP 로 돌아온다",
       "effect": {
         "kind": "lifestealPct",
         "values": [

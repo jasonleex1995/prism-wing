@@ -175,6 +175,65 @@ suite('traits — 효과 (§11.6 ㉒)', () => {
     assert.eq(healed, 0, `체인은 회복이 0 이다 (피해 ${e.dmgTotal.toFixed(1)} · 회복 ${healed})`);
   });
 
+  //  ★ ㊿-zj — 위 테스트는 데이터 표는 14종 «전부» 보지만 실제 회복은 체인 한 종만 돌렸다(아래 z8 은 벌컨 한 종).
+  //    나머지 12종은 한 번도 실제로 확인되지 않았다 — 조건은 맞았지만(사용자 제보 후 전수 실측) 그걸 지키는 그물이 없었다.
+  //    여기서 14종을 «진화 전·진화 후» 둘 다 실제로 돌린다. 진화는 폭발·분열·자탄 같은 «새 피해 경로»를 만들기 때문이다.
+  test('㊿-zj 흡혈 여부는 14종 «전부»가 실제 전투에서 데이터대로다 — 진화 전 Lv5 · 진화 Lv8 둘 다', () => {
+    const d = loadData();
+    const hooks = d.rules.passiveHooks;
+    const noDmg = new Set(d.weapons.weapons.filter((w) => !('dmg' in w.base)).map((w) => w.family));   // 피해가 없는 무기(펄스필드)
+    const t = d.traits.traits.find((x) => x.id === 'lifesteal');
+    const A = d.rules.view.arena;
+    const measure = (fam, level, evolved) => {
+      const w = mkRun(1, 'sea', 0);
+      for (let i = 0; i < d.traits.maxLevel; i += 1) applyTrait(w, 'lifesteal');
+      for (const sl of w.slots) { sl.weaponId = null; sl.family = null; sl.level = 0; sl.effDirty = true; }
+      giveWeapon(w, fam);
+      const s = w.slots.find((x) => x.family === fam);
+      s.level = level; s.evolved = evolved; s.effDirty = true;
+      s.cooldownT = 0;                                          // 첫 발을 바로 — 쿨다운이 긴 무기(바라지 Lv5)가 창 안에 못 쏘면 전제가 깨진다
+      //  적은 «아레나 전체를 격자로» — 조준 방식이 제각각이다(최근접 · 전방 · 궤도 · ★ 바라지는 «아레나의 무작위 지점»).
+      //  플레이어 둘레 고리로만 두면 무작위 폭격이 짧은 창에서 전부 빗나가 전제(피해 > 0)가 깨졌다(실측).
+      //  ★ «아레나 안»에만 둔다 — 밖에 두면 화면 밖 정리로 풀려서 측정이 오염된다(실측으로 한 번 속았다).
+      const p = w.player; const es = [];
+      const put = (x, y) => {
+        if (Math.hypot(x - p.x, y - p.y) < 45) return;             // 기체와 겹치면 접촉 피해가 섞인다
+        const e = spawnEnemy(w, 'drifter', 'normal', x, y, 1e9, false);
+        if (e) { e._hx = x; e._hy = y; es.push(e); }
+      };
+      for (let y = A.y + 40; y < A.y + A.h - 30; y += 70) {
+        for (let x = A.x + 40; x < A.x + A.w - 30; x += 70) put(x, y);
+      }
+      //  ★ 기체 «바로 위» 한 줄 — 격자 열(x=600·670)이 기체(x=640)를 정확히 비껴가서, 전방으로 좁게 쏘는
+      //    랜스가 한 대도 못 맞혔다(실측). 좁은 직선 무기를 위한 자리다.
+      for (let y = p.y - 60; y > A.y + 30; y -= 70) put(p.x, y);
+      let healed = 0;
+      for (let k = 0; k < 60 * 4; k += 1) {
+        for (const e of es) if (e.alive) { e.x = e._hx; e.y = e._hy; e.hp = 1e9; }
+        w.player.hp = w.player.hpMax * t.effect.hpRatio;     // 흡혈이 «드는» HP 에 붙잡아 둔다
+        const before = w.player.hp;
+        w.over = false;
+        step(w, makeInput(), TICK_DT);
+        if (w.player.hp > before) healed += w.player.hp - before;
+      }
+      let dealt = 0; for (const e of es) dealt += e.dmgTotal;   // 두 경로(hitEnemy · 탄 충돌) 모두 쌓는 누적
+      return { dealt, healed };
+    };
+    for (const fam of Object.keys(hooks)) {
+      for (const [lv, evo] of [[5, false], [8, true]]) {
+        const tag = `${fam} Lv${lv}${evo ? ' 진화' : ''}`;
+        const { dealt, healed } = measure(fam, lv, evo);
+        if (noDmg.has(fam)) {
+          assert.eq(dealt, 0, `${tag}: 피해가 없는 무기다(데이터에 dmg 가 없다) — 흡혈은 원리적으로 불가능`);
+          continue;
+        }
+        assert.gt(dealt, 0, `${tag}: 전제 — 실제로 때렸다 (0 이면 «회복 0» 이 아무것도 증명하지 못한다)`);
+        assert.eq(healed > 0, hooks[fam].lifesteal,
+          `★ ${tag}: 흡혈 ${hooks[fam].lifesteal ? '«들어야»' : '«안 들어야»'} 하는데 실측 회복 ${healed.toFixed(2)} (피해 ${dealt.toFixed(0)})`);
+      }
+    }
+  });
+
   test('㊿-z8 흡혈은 «탄이 닿는 경로»에서도 든다 — 이 파일이 hitEnemy 를 직접 불러서 결함을 가렸다', () => {
     // 기존 흡혈 테스트는 damage.hitEnemy 를 «직접» 부른다. 실제 플레이의 탄→적 경로는 step.collide 이고
     //   그쪽은 hitEnemy 를 안 지난다 — 그래서 포워드·시커·부메랑·드론·오빗·핀볼은 흡혈이 한 방울도 안 들었다.
