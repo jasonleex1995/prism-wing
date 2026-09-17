@@ -195,6 +195,27 @@ suite('state · spawn* 필드 + 캡 정책 (§12.1)', () => {
     assert.eq(merged.value, 6, '값 합산 1 + 5 = 6 (손실 0)');
     assert.eq(w.capHits.pickup, 1, 'capHits.pickup 발화 1');
   });
+
+  //  ★ ㊿-zk — «다른 kind» 병합 경로. state.js 는 이 경로를 「kind 가 xp 하나뿐이라 도달 불가 · 죽은 코드로 읽어도 된다」고
+  //    적어 두었는데, v1.10 ⑲ 의 금색 **특성 구슬(kind 'trait')** 이 생기면서 **실제로 도는 경로**가 됐다:
+  //    경험치 구슬로 풀이 꽉 찬 순간 보스가 죽으면, 같은 kind(trait) 구슬이 없어 여기로 온다.
+  //    그리고 step.js 는 `if (q !== null) q.magnet = true` 로 실패를 **말없이** 건너뛴다 → 이 경로가 없으면
+  //    보스를 잡고도 특성 보상을 조용히 잃는다. 퍼징 중 그 블록을 지워 봤더니 556개 테스트가 전부 초록이었다(실측).
+  test('㊿-zk 경험치로 꽉 찬 풀에도 보스의 특성 구슬은 살아남는다 — 경험치 손실도 0', () => {
+    const w = mk();
+    const cap = w.data.rules.caps.pickups;
+    let xpIn = 0;
+    for (let i = 0; i < cap + 20; i += 1) { spawnPickup(w, 'xp', 3, 100 + (i % 30) * 10, 100 + Math.floor(i / 30) * 10); xpIn += 3; }
+    const alive = () => w.pickups.items.filter((q) => q.alive);
+    const xpInPool = () => alive().filter((q) => q.kind === 'xp').reduce((sum, q) => sum + q.value, 0);
+    assert.eq(alive().length, cap, '전제: 풀이 경험치로 꽉 찼다');
+    assert.eq(alive().filter((q) => q.kind === 'trait').length, 0, '전제: 특성 구슬은 아직 없다(같은 kind 병합 경로를 못 탄다)');
+    const orb = spawnPickup(w, 'trait', 1, 640, 300);
+    assert.ok(orb !== null, '★ 특성 구슬이 만들어졌다 — null 이면 보스 보상이 조용히 사라진다(step.js 가 null 을 건너뛴다)');
+    assert.eq(orb.kind, 'trait', '그 구슬이 특성 구슬이다');
+    assert.eq(alive().filter((q) => q.kind === 'trait').length, 1, '풀 안에 특성 구슬 1개');
+    assert.eq(xpInPool(), xpIn, `경험치 손실 0 — 넣은 ${xpIn} · 풀 안 ${xpInPool()} (자리를 내려고 두 구슬을 합쳤을 뿐이다)`);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -1041,9 +1041,11 @@ function spawnPickupAt(world, kind, value, x, y) {
     if (best !== null) { best.value += value; return best; }
     // ★ 같은 kind 픽업이 하나도 없다 = 풀이 «다른» kind 로 포화. 손실 0 을 지키려면 다른 kind 두 개를
     //   병합해 슬롯을 비우고 새 픽업을 그 자리에 놓는다.
-    //   ★ v1.5 기준 kind 는 `xp` **하나뿐**(코인·회복 픽업 폐지)이라 위 same-kind 루프가 항상 리턴하고
-    //     이 블록은 **도달 불가**다. 지우지 않는 이유: kind 가 다시 늘면 그 순간 필요한 안전망이고,
-    //     없으면 «픽업 손실 0» 이 조용히 깨진다. kind 가 1종인 동안은 죽은 코드로 읽어도 된다.
+    //   ★★ ㊿-zk — **이 블록은 실제로 돈다. 지우지 마라.** ~~v1.5 기준 kind 는 xp 하나뿐이라 도달 불가 · 죽은 코드로
+    //     읽어도 된다~~ 는 v1.10 ⑲ 에서 거짓이 됐다: 금색 **특성 구슬(kind 'trait')** 이 생겼고, 경험치 구슬로 풀이
+    //     꽉 찬 순간 보스가 죽으면 같은 kind 가 없어 정확히 여기로 온다. step.js 는 `if (q !== null)` 로 실패를
+    //     말없이 건너뛰므로, 이 블록이 없으면 **보스를 잡고도 특성 보상을 조용히 잃는다**(멈추지도 않아 눈치채기 어렵다).
+    //     퍼징 중 이 블록을 지워 봤더니 테스트 556개가 전부 초록이었다 → tests/state.test.mjs 「㊿-zk」 가 이제 막는다.
     const firstOf = Object.create(null);
     for (let i = 0; i < items.length; i += 1) {
       const q = items[i];
@@ -1058,7 +1060,7 @@ function spawnPickupAt(world, kind, value, x, y) {
       }
       firstOf[q.kind] = q;
     }
-    return null;                                      // 도달 불가(포화인데 전 kind 유일)
+    return null;                                      // 포화인데 모든 kind 가 한 개씩뿐일 때만(풀 384 · kind 2 라 사실상 불가)
   }
   p.kind = kind; p.value = value;
   p.x = x; p.y = y; p.vx = 0; p.vy = 0; p.magnet = false;
