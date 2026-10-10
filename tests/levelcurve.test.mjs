@@ -1,10 +1,11 @@
 /**
  * tests/levelcurve.test.mjs — §9.5(v1.10 ㊿-s) S44 대용치가 «못 보는» 레벨 칸은 실측으로 오른다.
  *   S44 대용치 = dmg × passiveHooks.countKey ÷ rateKey. countKey 가 null 인 무기(바라지 포격 수 · 오빗 공전체 수)는 개수가 대용치에 없고,
- *   조준 방식이 바뀐 칸(바라지 Lv8) «직후»는 아예 비교하지 않는다(check.mjs S44). 그 칸들을 정본 §11.1.1 ㊿-s 채움 벤치와 같은 방법으로 잰다:
+ *   조준 방식이 바뀐 칸(바라지 진화 레벨 — ㊿-zm Lv5 · 옛 Lv8) «직후»는 아예 비교하지 않는다(check.mjs S44). 그 칸들을 정본 §11.1.1 ㊿-s 채움 벤치와 같은 방법으로 잰다:
  *   무한 체력 표적(움직이지 않음) · 기체 고정 · 패시브 없음 · 120초 — 짧게 재면 발사 주기에 걸려 반올림된다(20초 벤치가 틀렸다, 검토).
  */
 import { suite, test, assert, loadData } from '../tools/test.mjs';
+import { WEAPON_EVOLVE_LEVEL, WEAPON_MAX_LEVEL } from '../src/core/schema.mjs';
 import { createWorld, giveWeapon, recomputeEff, spawnEnemy } from '../src/core/state.js';
 import { step, makeInput, TICK_DT } from '../src/core/step.js';
 import { weapons } from '../src/core/weapons/index.js';
@@ -15,7 +16,7 @@ function firepower(id, level, layout, secs) {
   const w = createWorld({ data, seed: 3, weapons, hooks: {}, startWeaponId: 'forward' });
   for (const s of w.slots) s.weaponId = null;
   const slot = w.slots[giveWeapon(w, id)];
-  slot.level = level; slot.evolved = level >= 8; slot.effDirty = true;
+  slot.level = level; slot.evolved = level >= WEAPON_EVOLVE_LEVEL; slot.effDirty = true;
   const eff = recomputeEff(w, slot);
   w.player.hp = 1e9; w.player.hpMax = 1e9;
   w.tele = { dmgByFamily: {}, dmgTakenByArch: {} };
@@ -39,10 +40,13 @@ function firepower(id, level, layout, secs) {
 }
 
 suite('levelcurve/S44 가 못 보는 칸 §9.5 ㊿-s', () => {
-  test('바라지 Lv8 → 9 → 10 이 실제로 오른다 — 조준 변화 직후 칸 · 포격 수(countKey null)', () => {
-    const v = [8, 9, 10].map((L) => firepower('barrage', L, 'field', 120));
-    assert.gt(v[1], v[0] * 1.02, `Lv9 ${v[1].toFixed(0)} > Lv8 ${v[0].toFixed(0)} (+2% 넘게)`);
-    assert.gt(v[2], v[1] * 1.02, `Lv10 ${v[2].toFixed(0)} > Lv9 ${v[1].toFixed(0)} (+2% 넘게)`);
+  test('바라지 진화 레벨 → 최대 레벨이 실제로 오른다 — 조준 변화 직후 칸 · 포격 수(countKey null) (㊿-zm Lv5 → 6 · 옛 Lv8 → 10)', () => {
+    const levels = [];
+    for (let L = WEAPON_EVOLVE_LEVEL; L <= WEAPON_MAX_LEVEL; L += 1) levels.push(L);
+    const v = levels.map((L) => firepower('barrage', L, 'field', 120));
+    for (let i = 1; i < v.length; i += 1) {
+      assert.gt(v[i], v[i - 1] * 1.02, `Lv${levels[i]} ${v[i].toFixed(0)} > Lv${levels[i - 1]} ${v[i - 1].toFixed(0)} (+2% 넘게)`);
+    }
   });
 
   test('오빗 Lv1 → 2 → 3 → 4 가 실제로 오른다 — 공전체 수(countKey null) · Lv2 는 공전 속도', () => {

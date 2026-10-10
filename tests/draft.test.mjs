@@ -14,6 +14,7 @@
  */
 
 import { suite, test, assert, loadData } from '../tools/test.mjs';
+import { WEAPON_EVOLVE_LEVEL } from '../src/core/schema.mjs';
 import { createWorld, giveWeapon, levelUpWeapon, givePassive } from '../src/core/state.js';
 import { investElement } from '../src/core/stance.js';
 import {
@@ -88,17 +89,21 @@ suite('draft/candidates', () => {
     assert.ok(ids(candidates(w2)).has('orbitext'), '보유(Lv1) 궤도 확장은 궤도 무기 없이도 레벨업 카드로 나온다');
   });
 
-  test('Lv7 진화 카드는 짝 패시브 Lv3 이 있어야 등장한다 (§9.5 v1.5 뱀서식)', () => {
+  test('진화 카드(Lv4→Lv5)는 짝 패시브가 요구 레벨이어야 등장한다 (§9.5 v1.5 뱀서식 · ㊿-zm 옛 Lv7→8 · 짝 Lv3)', () => {
     const w = mkWorld();
     const d = w.data.meta.draft;
-    for (let i = 0; i < 6; i += 1) levelUpWeapon(w, 0);   // forward Lv1 → Lv7
-    // 짝 패시브(overclock) 없이는 진화(Lv8) 카드가 나오지 않는다 → 무기는 Lv7 에서 멈춘다
+    const req = w.weaponDefs.forward.evolution.requiresPassive;          // ㊿-zm { overclock, 2 }
+    for (let i = 1; i < WEAPON_EVOLVE_LEVEL - 1; i += 1) levelUpWeapon(w, 0);   // forward Lv1 → 진화 직전
+    assert.eq(w.slots[0].level, WEAPON_EVOLVE_LEVEL - 1, '진화 직전 레벨');
+    const have = () => { const q = w.passives.find((x) => x.id === req.id); return q === undefined ? 0 : q.level; };
+    // 짝 패시브가 요구 레벨 미만이면 진화 카드가 나오지 않는다 → 무기는 진화 직전에서 멈춘다
+    assert.lt(have(), req.level, `시작 짝 패시브 Lv${have()} < 요구 Lv${req.level}`);
     let c = candidates(w).find((x) => x.category === 'weaponLevel' && x.weaponId === 'forward');
-    assert.eq(c, undefined, '짝 패시브 없으면 Lv8 진화 카드 미등장');
-    // overclock 을 Lv3 까지 투자하면 진화 카드가 등장한다
-    for (let i = 0; i < 3; i += 1) givePassive(w, 'overclock');
+    assert.eq(c, undefined, '짝 패시브가 모자라면 진화 카드 미등장');
+    // 요구 레벨까지 투자하면 진화 카드가 등장한다
+    while (have() < req.level) givePassive(w, req.id);
     c = candidates(w).find((x) => x.category === 'weaponLevel' && x.weaponId === 'forward');
-    assert.eq(c.isEvolution, true, 'Lv7→Lv8 = 진화 (짝 패시브 Lv3 충족)');
+    assert.eq(c.isEvolution, true, `Lv${WEAPON_EVOLVE_LEVEL - 1}→Lv${WEAPON_EVOLVE_LEVEL} = 진화 (짝 패시브 Lv${req.level} 충족)`);
     assert.eq(c.weight, d.categoryWeights.weaponLevel * d.weaponLevelEvolutionBonus, '진화 보너스 가중치');
   });
 
@@ -220,15 +225,16 @@ suite('draft/pity', () => {
 
 
 suite('draft/apply', () => {
-  test('첫 속성 확정 = 투자 0→1 최초 전이에서 스탠스 자동 장착 (§9.9 onboarding)', () => {
+  test('첫 속성 확정 = 투자 0 에서의 최초 전이에서 스탠스 자동 장착 (§9.9 onboarding) · 한 장 = elementLevelStep 단계 (㊿-zn)', () => {
     const w = mkWorld();
     const [FIRE, WATER] = w.data.elements.investable;
+    const step = w.data.meta.draft.elementLevelStep;
     applyCard(w, { category: 'elementLevel', element: FIRE });
-    assert.eq(w.player.invest[FIRE], 1, '불 투자 1');
+    assert.eq(w.player.invest[FIRE], step, `불 투자 ${step} (카드 한 장 = ${step} 단계)`);
     assert.eq(w.player.stance, FIRE, '스탠스 자동 = 불');
     // 두 번째 속성은 최초 전이가 아니므로 스탠스 유지
     applyCard(w, { category: 'elementLevel', element: WATER });
-    assert.eq(w.player.invest[WATER], 1, '물 투자 1');
+    assert.eq(w.player.invest[WATER], step, `물 투자 ${step}`);
     assert.eq(w.player.stance, FIRE, '스탠스는 불 유지 (자동 장착은 최초 1회)');
   });
 

@@ -278,6 +278,13 @@ export function drawArenaBands(ctx, world, pal) {
 // 레이어 12 — HUD 패널 (§1.1 — 좌 0~350 · 우 930~1280. 아레나를 침범하지 않는다)
 // ---------------------------------------------------------------------------
 export function drawPanels(ctx, world, pal) {
+  drawPanelBacks(ctx, world, pal);
+  drawLeftPanel(ctx, world, pal);
+  drawRightPanel(ctx, world, pal);
+}
+
+/** 패널 바탕 · 경계선 — 캐시를 쓰든 안 쓰든 매 프레임 직접 칠한다(4회). */
+function drawPanelBacks(ctx, world, pal) {
   const v = world.data.rules.view;
   ctx.fillStyle = pal.hud.panelBg;
   ctx.fillRect(0, 0, v.panelLeftW, v.logicalH);
@@ -285,9 +292,103 @@ export function drawPanels(ctx, world, pal) {
   ctx.fillStyle = pal.hud.panelRule;
   ctx.fillRect(v.panelLeftW - 1, 0, 1, v.logicalH);
   ctx.fillRect(v.arena.x + v.arena.w, 0, 1, v.logicalH);
+}
 
-  drawLeftPanel(ctx, world, pal);
-  drawRightPanel(ctx, world, pal);
+// ---------------------------------------------------------------------------
+// ★ §9.4.1 hud.panelCacheDirtyOnly — 좌우 패널은 «바뀔 때만» 다시 그린다 (v1.10 ㊿-zl 구현 — 키는 v1.1 부터 있었고 읽는 곳이 0 이었다)
+//   패널은 매 프레임 글자 ~75줄(외곽선 + 채움 = 그리기 ~150회)을 찍었다. 실측(DPR 2 · 봇 판)으로 프레임의 글자 그리기 거의 전부다.
+//   그런데 패널의 내용은 아래 «입력»의 순수 함수다 — 시간에 따라 깜빡이거나 움직이는 것이 없다:
+//     스탠스 · 속성 투자 · 특성 레벨 · 쉴드 준비 · 무기 슬롯(무기 · 레벨 · 진화 · 각인) · 패시브(종류 · 레벨)
+//   → 입력이 그대로면 직전 그림을 찍는다(drawImage 2회). 바뀐 프레임에만 패널을 다시 그린다.
+//   ★ 화면은 그대로다(브라우저 실측: 배율 1 · 1.5 · 2 에서 다른 픽셀 0~1개 — §9.4.1 ㊿-zl): 캐시는 본 캔버스와 «같은 크기 · 같은 변환»의 캔버스 한 장이다. 패널 안쪽 사각형
+//     (가장자리에서 PANEL_CACHE_INSET 안쪽, 기기 픽셀 격자에 맞춤)만 같은 자리로 1:1 복사한다 → 이음매가 없고,
+//     바탕(panelBg)·경계선은 drawPanelBacks 가 지금처럼 직접 칠한다.
+//     ★ 캐시를 패널 폭만큼 잘라 «옮긴 좌표»로 그렸더니 소수 배율(1.25 · 1.5 · 1.75 — 윈도 노트북에 흔하다)에서 글자 일부가
+//       다른 서브픽셀 칸에 떨어졌다(실측: 1.25 에서 1,372px). 절대 좌표가 같아야 글자 래스터가 같다 — 그래서 한 장 · 같은 변환이다.
+//   ★ 캐시 캔버스를 못 만드는 환경(헤드리스 드라이버 · 테스트)은 직접 그린다 — 그림은 같다.
+// ---------------------------------------------------------------------------
+const PANEL_CACHE_INSET = 8;   // 논리 px. 패널 내용은 panelPadPx(16) 안쪽에 살고, 글자 외곽선(2px)도 이 안에 든다
+
+/** @param makeCanvas (w, h) → 캔버스 | null — 본 캔버스와 같은 기기 픽셀 크기의 오프스크린 캔버스를 만든다(main.js 가 주입한다) */
+export function makePanelCache(makeCanvas) {
+  return { makeCanvas, ok: true, dpr: 0, pal: null, prev: [], k: 0, n: -1, dirty: true, canvas: null, g: null };
+}
+
+function sigPut(c, v) { if (c.prev[c.k] !== v) { c.prev[c.k] = v; c.dirty = true; } c.k += 1; }
+
+/** 패널 입력이 직전 프레임과 다른가 — 값을 제자리에서 비교·갱신한다(프레임마다 새 객체를 만들지 않는다). */
+function panelInputsChanged(world, c) {
+  c.k = 0;
+  const p = world.player;
+  sigPut(c, p.stance);
+  const inv = world.data.elements.investable;
+  for (let i = 0; i < inv.length; i += 1) sigPut(c, p.invest[inv[i]]);
+  const td = world.data.traits.traits;
+  for (let i = 0; i < td.length; i += 1) sigPut(c, world.traits[td[i].id]);
+  sigPut(c, world.traitState.shieldReady);
+  for (let i = 0; i < world.slots.length; i += 1) {
+    const s = world.slots[i];
+    sigPut(c, s.weaponId); sigPut(c, s.level); sigPut(c, s.evolved); sigPut(c, s.stampElement);
+  }
+  for (let i = 0; i < world.passives.length; i += 1) { sigPut(c, world.passives[i].id); sigPut(c, world.passives[i].level); }
+  if (c.k !== c.n) { c.n = c.k; c.dirty = true; }
+  const d = c.dirty;
+  c.dirty = false;
+  return d;
+}
+
+/** 캐시를 다시 그린다 — 본 캔버스와 같은 크기 · 같은 변환으로 panelBg 를 깔고 두 패널의 내용을 그린다. 실패하면 false. */
+function renderPanelCache(c, world, pal, dpr) {
+  const v = world.data.rules.view;
+  const w = Math.round(v.logicalW * dpr);           // main.fitCanvas 의 백킹스토어와 같은 식
+  const h = Math.round(v.logicalH * dpr);
+  if (c.canvas === null || c.canvas.width !== w || c.canvas.height !== h) {
+    c.canvas = c.makeCanvas(w, h);
+    c.g = c.canvas === null ? null : c.canvas.getContext('2d', { alpha: false });
+    if (c.g === null || c.g === undefined) { c.ok = false; return false; }
+  }
+  const g = c.g;
+  if (typeof g.reset === 'function') g.reset();
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1;
+  g.globalCompositeOperation = 'source-over';
+  g.fillStyle = pal.hud.panelBg;
+  g.fillRect(0, 0, w, h);
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawLeftPanel(g, world, pal);
+  drawRightPanel(g, world, pal);
+  return true;
+}
+
+/** 논리 x0..x1 (높이 전체)를 기기 픽셀 격자에 맞춰 캐시에서 «같은 자리»로 1:1 복사한다. */
+function blitPanelRect(ctx, c, x0, x1, dpr) {
+  const sx = Math.floor(x0 * dpr);
+  const sw = Math.ceil(x1 * dpr) - sx;
+  const h = c.canvas.height;
+  ctx.drawImage(c.canvas, sx, 0, sw, h, sx, 0, sw, h);
+}
+
+/**
+ * drawPanels 와 같은 그림 — hud.panelCacheDirtyOnly 면 캐시를 거친다.
+ * @param dpr  main 캔버스의 백킹스토어 배율(§1.1 min(dpr, maxDpr)) — 바뀌면 캐시를 새로 만든다
+ */
+export function drawPanelsCached(ctx, world, pal, cache, dpr) {
+  if (cache === null || !cache.ok || !world.data.rules.hud.panelCacheDirtyOnly) { drawPanels(ctx, world, pal); return; }
+  const v = world.data.rules.view;
+  drawPanelBacks(ctx, world, pal);
+  const changed = panelInputsChanged(world, cache);
+  if (changed || cache.dpr !== dpr || cache.pal !== pal || cache.canvas === null) {
+    if (!renderPanelCache(cache, world, pal, dpr)) { drawLeftPanel(ctx, world, pal); drawRightPanel(ctx, world, pal); return; }
+    cache.dpr = dpr;
+    cache.pal = pal;
+  }
+  const right = v.arena.x + v.arena.w;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  blitPanelRect(ctx, cache, PANEL_CACHE_INSET, v.panelLeftW - PANEL_CACHE_INSET, dpr);
+  blitPanelRect(ctx, cache, right + PANEL_CACHE_INSET, v.logicalW - PANEL_CACHE_INSET, dpr);
+  ctx.restore();
 }
 
 /** 좌 패널 — §9.4.1 elementMatrixInPanel: 상성표 4×4 상시 = **정보 루프의 폐쇄** */
@@ -567,11 +668,11 @@ export function drawDraft(ctx, world, pal, draft, cursor) {
   }
 
   const cw = 300;
-  const ch = 450;   // ㊿-r 380 → 450 — 진화 카드가 «특수 효과 수치 + Lv.8 레벨업 수치»를 함께 싣는다
+  const ch = 470;   // ㊿-r 380 → 450 — 진화 카드가 «특수 효과 수치 + 진화 칸 수치»를 함께 싣는다 · ★ ㊿-zn 450 → 470: 진화 칸이 옛 세 칸을 합쳐 수치가 최대 5줄
   const gap = 28;
   const total = draft.cards.length * cw + (draft.cards.length - 1) * gap;
   const x0 = (v.logicalW - total) / 2;
-  const y0 = 200;
+  const y0 = 184;   // ㊿-zn 200 → 184 — 카드가 20px 길어진 만큼 위로(바닥 654 · 데모 표기 668 위)
 
   for (let i = 0; i < draft.cards.length; i += 1) {
     const c = draft.cards[i];
@@ -602,43 +703,44 @@ export function drawDraft(ctx, world, pal, draft, cursor) {
       ctx.fillStyle = accent;
       ctx.fill();
     }
+    // ★ ㊿-zl — 카드 안의 글줄은 전부 «폭 cw − 36 안»이다. 줄바꿈하는 문장(sub · desc)뿐 아니라
+    //   한 줄짜리(제목 · 증분 줄 · 진화 수치)도 fitText 를 지난다: 넘치면 글자를 minPx 까지 줄이고, 그래도 넘치면 줄을 바꾼다.
+    //   ㊿-zj 의 흡혈 강화 카드는 한 줄짜리 증분 줄이 그대로 그려져 카드 밖으로 60px 넘게 삐져나갔다(사용자 제보 2026-10-10).
+    const lineW = cw - 36;
     // 헤드라인(이름/레벨) — 가장 크게
-    text(ctx, world, pal, body.title, cx, y0 + 156, h.fontLargePx, pal.hud.textPrimary, 'center', 700);
+    const titleY = fitText(ctx, world, pal, body.title, cx, y0 + 156, lineW, h.fontLargePx, pal.hud.textPrimary, 'center', 700, 28);
     // ★ 효과 한 줄을 **크게**(accent, 16px, 굵게, 중앙) — "무엇을 하는가"가 여기서 읽힌다.
     //   긴 효과는 자동 줄바꿈 (accent 로 헤드라인과 명도 대비를 준다)
     // ★ wrap 은 «마지막 줄의 y» 를 돌려준다 — 아래 블록을 그 값에서 이어 붙여
     //   긴 설명이 증분 줄을 덮는 일이 없게 한다(고정 y 는 sub 가 4줄이 되면 겹친다).
-    let cy = y0 + 200;
+    let cy = Math.max(y0 + 200, titleY + 44);
     if (body.sub !== '') {
-      cy = wrap(ctx, world, pal, body.sub, cx, cy, cw - 36, h.fontBodyPx, accent, 22, 'center', 600);
+      cy = wrap(ctx, world, pal, body.sub, cx, cy, lineW, h.fontBodyPx, accent, 22, 'center', 600);
     }
     // ★ §11.1(v1.7) 증분 줄 — «얼마나» 좋아지는가. 세 장을 비교할 근거가 여기서 나온다.
     //   accent(효과)와 색을 갈라 둔다 — 「무엇을」과 「얼마나」가 서로 묻히지 않게.
     const delta = cardDelta(world, c);
     cy += 34;
     for (let k = 0; k < delta.length; k += 1) {
-      text(ctx, world, pal, delta[k], cx, cy, h.fontBodyPx, pal.hud.textPrimary, 'center');
-      cy += 22;
+      cy = fitText(ctx, world, pal, delta[k], cx, cy, lineW, h.fontBodyPx, pal.hud.textPrimary, 'center', 400, 20) + 22;
     }
     // ★ ㊿-r — 진화 카드는 «진화도 레벨업»(Lv7 → Lv8)이다. 같은 순간 그 레벨 칸의 수치도 들어오는데 카드가 그것을 숨겼다
     //   (옵션: 카드엔 「위성 하나 더」만 보이는데 실제로는 위성이 3 → 5개). 작은 제목 아래에 붙인다
     //   (사용자 2026-09-11 「진화도 레벨업이면 당연히 붙여줘야할듯」).
     const gains = evolutionLevelGains(world, c);
     if (gains.length > 0) {
-      text(ctx, world, pal, `Lv.${c.to} 레벨업`, cx, cy, h.fontSmallPx, pal.hud.textDim, 'center', 600);
-      cy += 22;
+      cy = fitText(ctx, world, pal, `Lv.${c.to} 레벨업`, cx, cy, lineW, h.fontSmallPx, pal.hud.textDim, 'center', 600, 18) + 22;
       for (let k = 0; k < gains.length; k += 1) {
-        text(ctx, world, pal, gains[k], cx, cy, h.fontBodyPx, pal.hud.textPrimary, 'center');
-        cy += 22;
+        cy = fitText(ctx, world, pal, gains[k], cx, cy, lineW, h.fontBodyPx, pal.hud.textPrimary, 'center', 400, 20) + 22;
       }
     }
     // 부가 설명(레벨·부여 프리뷰 등) — 작게, 아래에
-    cy = wrap(ctx, world, pal, body.desc, cx, cy + 18, cw - 36, h.fontSmallPx, pal.hud.textDim, 20, 'center');
+    cy = wrap(ctx, world, pal, body.desc, cx, cy + 18, lineW, h.fontSmallPx, pal.hud.textDim, 20, 'center');
     // ★ ㊵ — 패시브 카드는 «내 무기 중 무엇에 듣는지»를 말한다. 분류를 외우게 하지 않는다(사용자 2026-09-05).
     if (c.category === 'passive') {
       const line = passiveWeaponLine(world, c.passiveId);      // ㊸ 기체 패시브면 null — 줄을 붙이지 않는다
       if (line !== null) {
-        wrap(ctx, world, pal, line.text, cx, cy + 24, cw - 36, h.fontSmallPx,
+        wrap(ctx, world, pal, line.text, cx, cy + 24, lineW, h.fontSmallPx,
           line.hit.length > 0 ? pal.hud.accent : rgba(pal.hud.textDim, 0.8), 18, 'center', 700);
       }
     }
@@ -668,17 +770,26 @@ const STAT_FMT = {
   elementBonusMul: 'mul',                 // ★ §3.1 의 k — 가산이 아니라 «대입»이다
 };
 
-/** §11.6 ㉒ 특성 효과의 표기법 — kind 마다 단위가 다르다(초당 HP · 피해의 % · 초). 미지의 kind 는 숫자 그대로(숨기지 않는다).
+/** §11.6 ㉒ 특성 «값»의 표기법 — kind 마다 단위가 다르다(초당 HP · 피해의 % · 초). 미지의 kind 는 숫자 그대로(숨기지 않는다).
+ *  ★ ㊿-zl — 카드의 증분 줄은 이것만 쓴다. 조건까지 붙인 fmtTrait 를 「이전 → 이후」 양쪽에 쓰자
+ *    「0.5% (HP 50%↓ · 조준 무기) → 0.75% (HP 50%↓ · 조준 무기)」(16px 408~425px)가 되어 카드(300px) 밖으로 넘쳤다
+ *    (사용자 플레이테스트 제보 2026-10-10). 조건은 카드 설명 문장(traits[].desc)이 이미 말한다. */
+function fmtTraitValue(kind, v) {
+  if (kind === 'regenHpPerSec') return `초당 ${num(v)} HP`;
+  if (kind === 'lifestealPct') return `${num(v * 100)}%`;
+  if (kind === 'shieldEverySec') return `${num(v)}초마다`;
+  return num(v);
+}
+
+/** §11.6 ㉒ HUD 특성 줄의 표기 — 값 + (흡혈만) 조건.
  *  ★ ㊿-zj — kind 가 아니라 effect 를 받는다. 흡혈의 «HP 조건»은 effect.hpRatio(데이터)에서 읽는다 —
  *    예전엔 「HP 50%↓」를 글자로 박아 두어, 게이트가 허용하는 0.3~0.6 사이로 값을 바꾸면 HUD 가 거짓말했다.
  *  ★ ㊿-zj — 흡혈에는 «조준 무기»를 함께 적는다(사용자 2026-09-17). 조건은 ㊿-za 부터 게임에 걸려 있었지만
  *    화면 어디에도 안 보여서, 카드만 보면 모든 무기로 흡혈되는 것처럼 읽혔다. */
 function fmtTrait(effect, v) {
-  const kind = effect.kind;
-  if (kind === 'regenHpPerSec') return `초당 ${num(v)} HP`;
-  if (kind === 'lifestealPct') return `${num(v * 100)}% (HP ${num(effect.hpRatio * 100)}%↓ · 조준 무기)`;
-  if (kind === 'shieldEverySec') return `${num(v)}초마다`;
-  return num(v);
+  const val = fmtTraitValue(effect.kind, v);
+  if (effect.kind === 'lifestealPct') return `${val} (HP ${num(effect.hpRatio * 100)}%↓ · 조준 무기)`;
+  return val;
 }
 
 /** 특성 카드(c.traitId)의 정의 — 없으면 조용히 넘어가지 않는다(§9.3). */
@@ -773,7 +884,7 @@ function levelGains(def, from, to, max, markArrays) {
 /** ㊿-r — 진화 카드는 «진화도 레벨업»(Lv7 → Lv8)이다: 같은 순간 들어오는 그 레벨 칸의 수치. 진화 카드가 아니면 빈 배열. */
 function evolutionLevelGains(world, c) {
   if (c.category !== 'weaponLevel' || !c.isEvolution) return [];
-  return levelGains(world.weaponDefs[c.weaponId], c.from, c.to, 3, false);
+  return levelGains(world.weaponDefs[c.weaponId], c.from, c.to, 5, false);   // ㊿-zn 진화 칸도 옛 세 칸(6·7·8)을 합친다
 }
 
 /**
@@ -812,8 +923,9 @@ function cardDelta(world, c) {
   }
   if (c.category === 'trait') {
     // §11.6 ㉒ — 증분 줄: 「얼마나 좋아지는가」. 표기는 효과 kind 가 정한다(초당 HP · % · 초)
-    const eff = traitDefOf(world, c.traitId).effect;
-    out.push(c.from === null ? fmtTrait(eff, c.to) : `${fmtTrait(eff, c.from)} → ${fmtTrait(eff, c.to)}`);
+    //   ★ ㊿-zl — 값만 쓴다(조건은 설명 문장이 말한다). 조건을 양쪽에 붙이면 흡혈 강화 카드가 넘친다.
+    const kind = traitDefOf(world, c.traitId).effect.kind;
+    out.push(c.from === null ? fmtTraitValue(kind, c.to) : `${fmtTraitValue(kind, c.from)} → ${fmtTraitValue(kind, c.to)}`);
     return out;
   }
   if (c.category === 'weaponLevel') {
@@ -828,7 +940,8 @@ function cardDelta(world, c) {
       }
       return out;
     }
-    return levelGains(def, c.from, c.to, 3, true);
+    //   ★ ㊿-zm·㊿-zn — 한 칸이 옛 여러 칸을 합쳐 바뀌는 수치가 최대 5개다(리턴 Lv2 등). 다 보인다 — 숨기면 카드가 덜 말한다.
+    return levelGains(def, c.from, c.to, 5, true);
   }
   if (c.category === 'newWeapon') {
     // §11.1(v1.7) — 무기마다 다른 이름으로 다른 줄이 뜨면 세 장을 나란히 못 읽는다(플레이 피드백:
@@ -1036,6 +1149,20 @@ export function wrapLines(measure, s, maxW) {
   }
   if (line !== '') lines.push(line);
   return lines;
+}
+
+/**
+ * ★ ㊿-zl — 한 줄로 쓰려던 글줄(카드 제목 · 증분 줄 · 진화 수치)을 «폭 maxW 를 절대 넘기지 않게» 그린다.
+ *   들어가면 그 크기 그대로 한 줄 · 넘치면 글자를 1px 씩 visual.text.minPx 까지 줄여 보고 · 그래도 넘치면 minPx 로 줄을 바꾼다.
+ *   글자를 minPx 밑으로는 줄이지 않는다(§7.9 가독성 하한). 반환 = 마지막 줄의 y (wrap 과 같은 규약).
+ */
+function fitText(ctx, world, pal, s, x, y, maxW, px, color, align, weight, lineH) {
+  const minPx = Math.min(px, world.data.rules.visual.text.minPx);
+  for (let p = px; p >= minPx; p -= 1) {
+    ctx.font = font(world, p, weight);
+    if (ctx.measureText(s).width <= maxW) { text(ctx, world, pal, s, x, y, p, color, align, weight); return y; }
+  }
+  return wrap(ctx, world, pal, s, x, y, maxW, minPx, color, lineH, align, weight);
 }
 
 /** wrapLines 로 나눈 줄을 그린다. 반환 = 마지막 줄의 y. */

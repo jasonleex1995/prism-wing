@@ -3,9 +3,9 @@
 
   "xp": {
     "curve": "poly",
-    "base": 5.02337,
-    "exp": 1.37,
-    "levelUpsPerRunTarget": 46,
+    "base": 8,
+    "exp": 2.0,
+    "levelUpsPerRunTarget": 43,
     "levelUpQueueMode": "serial"
   },
 
@@ -24,6 +24,7 @@
     "guaranteeElementCardOnFirstDraft": true,
     "guaranteeNewWeaponUntilSlots": 2,
     "elementCardPity": 6,
+    "elementLevelStep": 2,
     "fallback": { "id": "resupply", "name": "보급", "healPct": 0.05 },
     "pauseGame": true
   },
@@ -121,7 +122,7 @@
       "killTimeMedianBalanced": { "min": 120, "max": 150 }
     },
     "static": {
-      "growthBudget": { "maxLevelUps": 60, "minTotalSink": 130 },
+      "growthBudget": { "maxLevelUps": 45, "minTotalSink": 46 },
       "capHits": { "max": 0 },
       "fairnessViolations": { "max": 0 }
     }

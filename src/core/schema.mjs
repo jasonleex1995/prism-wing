@@ -142,8 +142,10 @@ const TERRAIN_KIND_VALUES = [...TERRAIN_KINDS, TERRAIN_MIXED];
 export const WEAPON_CLASSES = ['bullet', 'beam', 'area', 'orbital'];   // §9.5 ㊲ 무기 분류(패시브 분류와 짝) · ㊵ 데이터가 소유한다
 const TUTORIAL_GOALS = ['move', 'clear', 'level', 'superHit', 'terrain', 'boss'];   // §6.7 ㊻ 6스텝   // §6.7 ㊴
 export const SECTIONS = ['early', 'midboss', 'crisis', 'boss'];   // §8.19 — 스테이지 구간 어휘(배수는 early 에 속한다)
-export const WEAPON_MAX_LEVEL = 10;   // §9.5 v1.10 ⑱ — Lv8 진화 + Lv9·10 진화체 강화
-export const WEAPON_EVOLVE_LEVEL = 8; // §9.5 — Lv7→Lv8 카드 = 진화(짝 패시브 Lv3)
+//  ★ v1.10 ㊿-zn A안 두 번째(사용자 2026-10-10 「여전히 레벨업이 많게 느껴진다」) — 10단계 → 4단계(㊿-zm 의 6단계를 거쳐).
+//    옛 10단계 표의 1·5·8·10번째 칸을 그대로 쓴다(새 숫자 0). 진화 = 옛 Lv8 칸.
+export const WEAPON_MAX_LEVEL = 4;   // §9.5 — Lv3 진화 + Lv4 진화체 강화 (옛 Lv8 진화 + Lv9·10)
+export const WEAPON_EVOLVE_LEVEL = 3; // §9.5 — Lv2→Lv3 카드 = 진화(짝 패시브 Lv1 — 옛 Lv7→8 · 짝 Lv3)
 
 // ---------------------------------------------------------------------------
 // 검증 원시 함수
@@ -665,7 +667,11 @@ function checkMeta(c, m) {
       'newWeaponSlotScale', 'weaponLevelEvolutionBonus', 'elementFirstLevelBonus', 'passiveNewBonus',
       'distinctItemsPerDraft', 'filterInvalid', 'newWeaponWhenSlotsFull',
       'elementLevelOfferRequiresWeaponCount', 'guaranteeElementCardOnFirstDraft',
-      'guaranteeNewWeaponUntilSlots', 'elementCardPity', 'fallback', 'pauseGame']);
+      'guaranteeNewWeaponUntilSlots', 'elementCardPity', 'elementLevelStep', 'fallback', 'pauseGame']);
+    // ★ ㊿-zn 속성 카드 한 장의 투자 단계(2 = 한 장에 +2). 1 이상 정수 — 0 이면 카드가 아무것도 안 하고, 소수는 투자 단위가 아니다
+    if (!Number.isInteger(m.draft.elementLevelStep) || m.draft.elementLevelStep < 1) {
+      c.fail('meta.draft.elementLevelStep', '1 이상 정수여야 한다 (§11.1 ㊿-zn — 속성 카드 한 장의 투자 단계)');
+    }
     c.closed('meta.draft.categoryWeights', m.draft.categoryWeights,
       ['newWeapon', 'weaponLevel', 'elementLevel', 'passive']);
     c.closed('meta.draft.fallback', m.draft.fallback, ['id', 'name', 'healPct']);

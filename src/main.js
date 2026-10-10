@@ -35,7 +35,8 @@ import { tally } from './core/score.js';
 import { seedHex } from './core/rng.js';
 import { dotText, dotLogo, dotScale } from './render/dotfont.js';   // §7.9.1(v1.10 ㊿-z) 도트 폰트
 import { resolvePalette, drawWorld, drawBackground, makeInterp, captureInterp, makeFx, updateFx, rgba } from './render/draw.js';
-import { drawPanels, drawDraft, drawResults, drawTutorial } from './render/hud.js';
+import { drawPanelsCached, makePanelCache, drawDraft, drawResults, drawTutorial } from './render/hud.js';
+import { sectionOf } from './core/terrain.js';   // ㊿-zl ?perf — 끊긴 순간의 구간 이름(읽기 전용 질의)
 import { makeTutorialState, tickTutorial, tutorialStep } from './core/tutorial.js';   // §6.7 ㊴·㊻
 
 // ---------------------------------------------------------------------------
@@ -145,6 +146,136 @@ function fitCanvas(canvas, view) {
   canvas.style.width = `${view.logicalW * s}px`;
   canvas.style.height = `${view.logicalH * s}px`;
   return dpr;
+}
+
+/**
+ * ㊿-zl §9.4.1 패널 캐시용 오프스크린 캔버스(기기 픽셀 크기). 같은 문서의 <canvas> 를 우선한다 — 글자 래스터가 본 캔버스와 같은 길을 탄다.
+ *   만들 수 없는 환경(헤드리스 드라이버)은 null → hud 가 패널을 직접 그린다(그림은 같다).
+ */
+function makeLayerCanvas(w, h) {
+  try {
+    if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      return c;
+    }
+    if (typeof OffscreenCanvas === 'function') return new OffscreenCanvas(w, h);
+  } catch (e) { /* 캐시 없이 그린다 */ }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// ★ v1.10 ㊿-zl `?perf` — 끊김 기록기. 사용자(2026-10-10): 테스터 제보 「플레이 중 중간중간 게임이 끊긴다」.
+//   어디서 · 무엇 때문에 끊기는지를 재는 계측이다. 기본 OFF · 실시간 ms 만 다룬다(게임 시계·판정·결정성 무관, §10.3).
+//   · 화면 왼쪽 아래(좌 패널 위)에 프레임 간격 p50/p95/최대 · 로직/그리기 ms · 끊김 횟수 · 개체 수 · 최근 끊김 3건
+//   · 끊긴 프레임(간격 > PERF_HITCH_MS)마다 그 순간의 상황을 남긴다 → console.warn + window.__perf.hitches
+//     (테스터는 개발자 도구 콘솔에서 copy(JSON.stringify(__perf.hitches)) 로 통째로 보낼 수 있다)
+//   · 간격만 길고 로직·그리기가 짧으면 원인은 바깥이다(메모리 청소 · GPU · 다른 탭). heapDropMB 가 크면(크롬) 메모리 청소다.
+// ---------------------------------------------------------------------------
+const PERF_HITCH_MS = 40;          // 60Hz 에서 프레임 2장 이상을 놓친 간격
+const PERF_IGNORE_MS = 1000;       // 이보다 긴 간격 = 탭이 숨겨졌던 것(끊김이 아니다)
+const PERF_WINDOW = 300;           // 통계 창(프레임 수) ≈ 60Hz 에서 5초
+const PERF_LOG_MAX = 200;
+
+function makePerf() {
+  const iv = new Float32Array(PERF_WINDOW);
+  const st = new Float32Array(PERF_WINDOW);
+  const rd = new Float32Array(PERF_WINDOW);
+  const sortBuf = new Float32Array(PERF_WINDOW);
+  let n = 0;
+  let last = -1;
+  let lastHeap = -1;
+  let lines = [];
+  let linesAt = -1;
+  const hitches = [];
+  const loaf = [];
+  const mem = (typeof performance !== 'undefined' && performance.memory) ? performance.memory : null;
+  //  LoAF(Chrome) — 긴 프레임이 «스크립트»인지 «렌더링(스타일·레이아웃·그리기)»인지 갈라 준다. 없는 브라우저는 그냥 건너뛴다.
+  try {
+    if (typeof PerformanceObserver === 'function' && PerformanceObserver.supportedEntryTypes
+      && PerformanceObserver.supportedEntryTypes.includes('long-animation-frame')) {
+      new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) {
+          loaf.push({ at: Math.round(e.startTime), ms: Math.round(e.duration), blockingMs: Math.round(e.blockingDuration),
+            renderMs: e.renderStart > 0 ? Math.round(e.startTime + e.duration - e.renderStart) : 0,
+            scriptMs: Math.round((e.scripts || []).reduce((a, s) => a + s.duration, 0)) });
+          if (loaf.length > PERF_LOG_MAX) loaf.shift();
+        }
+      }).observe({ type: 'long-animation-frame', buffered: false });
+    }
+  } catch (e) { /* 계측 실패는 게임을 막지 않는다 */ }
+
+  const p = {
+    stepMs: 0, renderMs: 0, steps: 0, interval: 0, stateBefore: '', hitchCount: 0, hitches, loaf,
+    /** @param stateBefore 이 프레임이 시작될 때의 상태 = 직전 프레임이 끝난 상태. 간격은 «직전 프레임»의 일이 만든다. */
+    begin(now, stateBefore) {
+      p.interval = last < 0 ? 0 : now - last;
+      last = now;
+      p.stateBefore = stateBefore;
+      p.stepMs = 0; p.renderMs = 0; p.steps = 0;
+    },
+    /** 한 프레임을 마감한다 — 통계 창에 넣고, 끊김이면 그 순간을 기록한다. */
+    end(world, state, now) {
+      if (p.interval <= 0 || p.interval > PERF_IGNORE_MS) return;
+      const i = n % PERF_WINDOW;
+      iv[i] = p.interval; st[i] = p.stepMs; rd[i] = p.renderMs;
+      n += 1;
+      const heap = mem !== null ? mem.usedJSHeapSize : -1;
+      const heapDrop = lastHeap > 0 && heap > 0 ? (lastHeap - heap) / 1048576 : 0;
+      lastHeap = heap;
+      //   드래프트 화면이 열려 있던 동안의 긴 간격(카드 첫 그리기 등)은 게임이 멈춘 화면이라 끊김으로 세지 않는다
+      if (p.interval > PERF_HITCH_MS && p.stateBefore !== 'DRAFT') {
+        p.hitchCount += 1;
+        const run = world !== null ? world.run : undefined;
+        const sec = run !== undefined && world.tut === undefined ? sectionOf(world) : null;
+        const h = {
+          n: p.hitchCount,
+          wallSec: Math.round(now / 100) / 10,
+          gameSec: world !== null ? Math.round(world.time * 10) / 10 : null,
+          state,
+          where: run !== undefined ? `s${run.stageIndex + 1}:${sec === null ? run.phase : sec}` : '',
+          intervalMs: Math.round(p.interval),
+          stepMs: Math.round(p.stepMs * 10) / 10,
+          renderMs: Math.round(p.renderMs * 10) / 10,
+          steps: p.steps,
+          heapDropMB: Math.round(heapDrop * 10) / 10,
+          enemies: world !== null ? world.enemies.live : 0,
+          enemyBullets: world !== null ? world.enemyBullets.live : 0,
+          playerBullets: world !== null ? world.playerBullets.live : 0,
+          pickups: world !== null ? world.pickups.live : 0,
+          level: world !== null ? world.player.level : 0,
+        };
+        hitches.push(h);
+        if (hitches.length > PERF_LOG_MAX) hitches.shift();
+        if (p.hitchCount <= 50) console.warn('[perf] 끊김', h);   // eslint-disable-line no-console
+      }
+    },
+    /** 오버레이 글줄 — 0.5초마다 다시 만든다(프레임마다 문자열을 새로 짓지 않는다). */
+    lines(world, now) {
+      if (linesAt >= 0 && now - linesAt < 500) return lines;
+      linesAt = now;
+      const m = Math.min(n, PERF_WINDOW);
+      if (m === 0) { lines = ['PERF — 측정 중']; return lines; }
+      for (let k = 0; k < m; k += 1) sortBuf[k] = iv[k];
+      const s = sortBuf.subarray(0, m).sort();
+      const q = (f) => s[Math.min(m - 1, Math.floor(m * f))];
+      let sa = 0; let sm = 0; let ra = 0; let rm = 0;
+      for (let k = 0; k < m; k += 1) { sa += st[k]; ra += rd[k]; if (st[k] > sm) sm = st[k]; if (rd[k] > rm) rm = rd[k]; }
+      const f1 = (v) => (Math.round(v * 10) / 10).toFixed(1);
+      //   좌 패널 폭(350) 안에 들게 짧게 쓴다 — 간격 = 프레임 사이 시간, 로직 = 시뮬 스텝, 그리기 = 렌더(모두 ms)
+      lines = [
+        `PERF ${Math.round(1000 / q(0.5))}fps · p50 ${f1(q(0.5))} · p95 ${f1(q(0.95))} · 최대 ${f1(s[m - 1])}ms`,
+        `로직 ${f1(sa / m)}(최대 ${f1(sm)}) · 그리기 ${f1(ra / m)}(최대 ${f1(rm)}) ms`,
+        `끊김 ${p.hitchCount}회 · 적 ${world.enemies.live} · 탄 ${world.enemyBullets.live}/${world.playerBullets.live} · 구슬 ${world.pickups.live}`,
+      ];
+      for (let k = Math.max(0, hitches.length - 3); k < hitches.length; k += 1) {
+        const h = hitches[k];
+        lines.push(`#${h.n} ${h.where} ${h.intervalMs}ms 로직${h.stepMs} 그리기${h.renderMs}${h.heapDropMB >= 1 ? ` GC−${h.heapDropMB}MB` : ''}`);
+      }
+      return lines;
+    },
+  };
+  return p;
 }
 
 /** §1.1 — 뷰포트 < 최소 → 플레이 차단 + 안내(입력 무시). 데스크톱 키보드 전용 */
@@ -444,6 +575,12 @@ async function boot() {
   const demoFixedSeed = !DEMO ? null
     : (/^[0-9a-fA-F]{8}$/.test(_demoParam) ? (parseInt(_demoParam, 16) >>> 0) : DEMO_DEFAULT_SEED);
   let demoHoldT = 0;                          // DRAFT/RESULTS 를 잠깐 보여주는 잔여(ms)
+  // ㊿-zl `?perf` — 끊김 기록기(makePerf). 기본 OFF · `?demo` 와 함께 써도 된다.
+  const perf = new URLSearchParams(location.search).has('perf') ? makePerf() : null;
+  if (perf !== null) window.__perf = perf;
+  // ㊿-zl §9.4.1 hud.panelCacheDirtyOnly — 좌우 패널은 바뀔 때만 다시 그린다. 캐시는 기기 픽셀 크기라 dpr 을 들고 다닌다.
+  const panelCache = makePanelCache(makeLayerCanvas);
+  let curDpr = 1;
   // §7.10 — SFX. AudioContext 는 사용자 제스처 후에만 소리를 낸다 → 첫 키 입력에서 resume.
   const audio = makeAudio(rules);
   // §7.10 — AudioContext 는 사용자 제스처 뒤에만 소리를 낸다 → 첫 키 입력에서 resume.
@@ -670,7 +807,30 @@ async function boot() {
 
   function frame(now) {
     requestAnimationFrame(frame);
+    if (perf !== null) perf.begin(now, state);
     try { frameBody(now); } catch (err) { noteFrameError(err); }
+    if (perf !== null) { perf.end(world, state, now); drawPerf(now); }
+  }
+
+  /** ㊿-zl `?perf` 오버레이 — 좌 패널 아래쪽(상성표·특성 아래의 빈 자리). 계측은 게임을 절대 막지 않는다. */
+  function drawPerf(now) {
+    if (world === null) return;
+    try {
+      const L = perf.lines(world, now);
+      const lh = 18;
+      const top = view.logicalH - 12 - L.length * lh;
+      ctx.save();
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = rgba(pal.threat.outline, 0.85);
+      ctx.fillRect(4, top - 6, view.panelLeftW - 8, L.length * lh + 10);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.font = `600 ${rules.hud.fontSmallPx}px ${rules.visual.text.family}`;
+      for (let i = 0; i < L.length; i += 1) {
+        ctx.fillStyle = i === 0 ? pal.hud.textPrimary : (i >= 3 ? pal.hud.accent : pal.hud.textDim);
+        ctx.fillText(L[i], 10, top + i * lh);
+      }
+      ctx.restore();
+    } catch (e) { /* 계측 실패는 게임을 막지 않는다 */ }
   }
 
   function frameBody(now) {
@@ -684,6 +844,7 @@ async function boot() {
     }
 
     const dpr = fitCanvas(canvas, view);
+    curDpr = dpr;                             // ㊿-zl 패널 캐시는 기기 픽셀 크기다
     resetCtx();                               // ㊳ ① 프레임의 시작 = 공장 상태 (앞 프레임의 상태가 절대 새지 않는다)
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);   // 이후 모든 좌표 = 논리 픽셀 (§1.1)
 
@@ -767,6 +928,7 @@ async function boot() {
     if (state === 'PLAY') {
       // §10.1 — 고정 타임스텝. maxFrameGapMs 로 프레임 갭을 자른다
       acc += Math.min(elapsed, rules.loop.maxFrameGapMs);
+      const stepT0 = perf !== null ? performance.now() : 0;
       let steps = 0;
       try {                                    // ㊳ ② 스텝 예외는 그 틱만 버린다 — 렌더는 계속된다(게임이 멈추지 않는다)
       while (acc >= tickDur && steps < rules.loop.maxStepsPerFrame) {
@@ -793,6 +955,7 @@ async function boot() {
         if (world.draftQueue > 0 && openDraftIfQueued()) break;
       }
       } catch (err) { noteFrameError(err); acc = 0; }
+      if (perf !== null) { perf.stepMs = performance.now() - stepT0; perf.steps = steps; }
       // §10.1 — 나선형 죽음 방지: 남은 시간 폐기 (빨리감기 금지)
       if (acc >= tickDur) acc = 0;
     } else {
@@ -810,7 +973,9 @@ async function boot() {
 
   /** ㊳ ②③ — 렌더 예외는 그 «그리기»만 버린다. 캔버스는 다음 프레임에 resetCtx() 로 어차피 공장 상태가 된다. */
   function renderFrame() {
+    const renderT0 = perf !== null ? performance.now() : 0;
     try { renderWorldAndOverlays(); } catch (err) { noteFrameError(err); }
+    if (perf !== null) perf.renderMs = performance.now() - renderT0;
     if (frameErrN > 0) {
       // 조용히 지나가지 않는다 — 구석의 작은 배지(플레이를 막지 않는다). 자기 자신은 절대 던지지 않게 최소한만 쓴다.
       try {
@@ -841,7 +1006,7 @@ async function boot() {
 
     const alpha = state === 'PLAY' ? acc / tickDur : 0;    // §10.1 — 위치 lerp 만. 로직 금지
     drawWorld(ctx, world, pal, fx, interp, alpha);
-    drawPanels(ctx, world, pal);
+    drawPanelsCached(ctx, world, pal, panelCache, curDpr);   // ㊿-zl §9.4.1 — 바뀔 때만 다시 그린다(그림은 drawPanels 와 같다)
     if (world.tut !== undefined) drawTutorial(ctx, world, pal, tutorialStep(world));   // §6.7 ㊴
     if (state === 'THEME_BANNER') drawThemeBanner();
     if (state === 'DRAFT') drawDraft(ctx, world, pal, draft, cursor);

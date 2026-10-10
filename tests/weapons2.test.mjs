@@ -9,12 +9,13 @@
  *             / 이지스는 evolved 에서만 적 탄을 지운다
  *             / 클러스터는 evolved 에서만 (blastRadius 밖 · evoClusterRadius+blastRadius 안)
  *   barrage — cooldownSec 마다 예고 / 예고 반경은 evolved 에서 evoRadiusMul 배 / telegraphSec 전엔
- *             무피해·후엔 폭발+반납 / targetMode 'densest'(Lv8)는 «가장 밀집한 적» 위에 떨어진다
+ *             무피해·후엔 폭발+반납 / targetMode 'densest'(진화 레벨 — ㊿-zm Lv5 · 옛 Lv8)는 «가장 밀집한 적» 위에 떨어진다
  *   drone   — anchorOffsets 자리에 droneCount 개 / droneRangePx 밖이면 발사 안 함 / droneFireSec 주기
  *             / 진화(잔상 편대)는 위치가 지연 추종한다
  */
 
 import { suite, test, assert, loadData } from '../tools/test.mjs';
+import { WEAPON_EVOLVE_LEVEL, WEAPON_MAX_LEVEL } from '../src/core/schema.mjs';
 import { createWorld, recomputeEff, giveWeapon, spawnEnemy, spawnEnemyBullet } from '../src/core/state.js';
 import { step, TICK_DT } from '../src/core/step.js';
 import { weapons } from '../src/core/weapons/index.js';
@@ -94,14 +95,14 @@ suite('weapons/orbit — 공전체 (§9.5)', () => {
   //   (사용자 2026-09-08: 「어떤 게 탄을 지운다는 건지 알기가 어려워」).
   test('진화하면 앞선 evoGuardBodies 개가 «방패 공»으로 표시된다 (렌더가 읽는 s0)', () => {
     const w = mkWorld();
-    const [su] = setup(w, 'orbit', 10, false);
+    const [su] = setup(w, 'orbit', WEAPON_MAX_LEVEL, false);
     tickWeapon(w, 'orbit', su, 1);
     const plain = w.playerBullets.items.filter((b) => b.alive && b.family === 'orbit');
     assert.gt(plain.length, 1, '공전체가 여러 개다');
     assert.eq(plain.filter((b) => b.s0 === 1).length, 0, '비진화면 방패 공 0개');
 
     const w2 = mkWorld();
-    const [se] = setup(w2, 'orbit', 10, true);
+    const [se] = setup(w2, 'orbit', WEAPON_MAX_LEVEL, true);
     tickWeapon(w2, 'orbit', se, 1);
     const bodies = w2.playerBullets.items.filter((b) => b.alive && b.family === 'orbit');
     const guards = bodies.filter((b) => b.s0 === 1).length;
@@ -112,7 +113,7 @@ suite('weapons/orbit — 공전체 (§9.5)', () => {
 
   test('방패 공에 닿은 적 탄은 «그 틱에» 사라지고, 보통 공은 안 지운다', () => {
     const w = mkWorld();
-    const [s] = setup(w, 'orbit', 10, true);
+    const [s] = setup(w, 'orbit', WEAPON_MAX_LEVEL, true);
     tickWeapon(w, 'orbit', s, 1);
     const bodies = w.playerBullets.items.filter((b) => b.alive && b.family === 'orbit');
     const guard = bodies.find((b) => b.s0 === 1);
@@ -170,7 +171,7 @@ suite('weapons/orbit — 공전체 (§9.5)', () => {
   test('이지스(적 탄 제거)는 evolved 에서만 일어난다', () => {
     for (const evolved of [false, true]) {
       const w = mkWorld();
-      const [s, eff] = setup(w, 'orbit', 8, evolved);
+      const [s, eff] = setup(w, 'orbit', WEAPON_EVOLVE_LEVEL, evolved);
       tickWeapon(w, 'orbit', s, 1);
       const b = liveBullets(w, 'orbit')[0];
       spawnEnemyBullet(w, w.data.bullets.bullets[0].id, b.x, b.y, 0, 0);
@@ -186,8 +187,8 @@ suite('weapons/orbit — 공전체 (§9.5)', () => {
 suite('weapons/barrage — 바라지 (§9.5)', () => {
   test('한 틱에 1발씩 strikeIntervalSec 간격으로 볼리를 깐다', () => {
     const w = mkWorld();
-    const [s, eff] = setup(w, 'barrage', 8, false);
-    assert.gt(eff.strikesPerVolley, 1, 'Lv8 볼리는 여러 발이다 (vacuous 아님)');
+    const [s, eff] = setup(w, 'barrage', WEAPON_EVOLVE_LEVEL, false);
+    assert.gt(eff.strikesPerVolley, 1, '진화 레벨 볼리는 여러 발이다 (vacuous 아님)');
     tickWeapon(w, 'barrage', s, 1);
     assert.eq(liveTelegraphs(w).length, 1, '첫 틱엔 1발');
     assert.eq(liveTelegraphs(w)[0].kind, 'strike', 'kind = strike');
@@ -200,7 +201,7 @@ suite('weapons/barrage — 바라지 (§9.5)', () => {
     const rs = [];
     for (const evolved of [false, true]) {
       const w = mkWorld();
-      const [s] = setup(w, 'barrage', 8, evolved);   // ★ 같은 레벨 — 차이는 진화 분기뿐
+      const [s] = setup(w, 'barrage', WEAPON_EVOLVE_LEVEL, evolved);   // ★ 같은 레벨 — 차이는 진화 분기뿐
       tickWeapon(w, 'barrage', s, 1);
       rs.push(liveTelegraphs(w)[0].r);
     }
@@ -232,10 +233,10 @@ suite('weapons/barrage — 바라지 (§9.5)', () => {
     assert.eq(t.alive, false, '연출이 끝나면 소유자가 반납한다');
   });
 
-  test("Lv8 targetMode 'densest' 는 가장 밀집한 무리 위에 떨어진다", () => {
+  test("진화 레벨(㊿-zm Lv5 · 옛 Lv8) targetMode 'densest' 는 가장 밀집한 무리 위에 떨어진다", () => {
     const w = mkWorld();
-    const [s, eff] = setup(w, 'barrage', 8, true);
-    assert.eq(eff.targetMode, 'densest', 'Lv8 이 targetMode 를 바꾼다 (회귀: 예전엔 여기서 던졌다)');
+    const [s, eff] = setup(w, 'barrage', WEAPON_EVOLVE_LEVEL, true);
+    assert.eq(eff.targetMode, 'densest', '진화 레벨이 targetMode 를 바꾼다 (회귀: 예전엔 여기서 던졌다)');
     const a = w.data.rules.view.arena;
     const lone = fatEnemy(w, a.x + a.w * 0.15, a.y + a.h * 0.2);
     const cx = a.x + a.w * 0.75;
@@ -289,18 +290,18 @@ suite('weapons/drone — 옵션 (§9.5)', () => {
   //   이전에는 진화가 위성 «전원»을 늦추어 실측 화력이 −7%(진화가 손해!)였고 화면엔 아무 변화도 안 보였다.
   test('진화(잔상 편대)는 위성을 한 기 늘린다', () => {
     const w = mkWorld();
-    const [su] = setup(w, 'drone', 8, false);
+    const [su] = setup(w, 'drone', WEAPON_EVOLVE_LEVEL, false);
     tickWeapon(w, 'drone', su, 1);
     const plain = liveDrones(w).length;
     const w2 = mkWorld();
-    const [se] = setup(w2, 'drone', 8, true);
+    const [se] = setup(w2, 'drone', WEAPON_EVOLVE_LEVEL, true);
     tickWeapon(w2, 'drone', se, 1);
     assert.eq(liveDrones(w2).length, plain + 1, `진화하면 한 기 더 (${plain} → ${plain + 1})`);
   });
 
   test('기존 편대는 제 자리를 지키고, 늘어난 «잔상» 한 기만 지연 추종한다', () => {
     const w = mkWorld();
-    const [s] = setup(w, 'drone', 8, true);
+    const [s] = setup(w, 'drone', WEAPON_EVOLVE_LEVEL, true);
     tickWeapon(w, 'drone', s, 1);
     const ds = liveDrones(w);
     const first = ds[0];

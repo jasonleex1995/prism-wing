@@ -18,7 +18,7 @@
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validate, MANIFEST } from '../src/core/schema.mjs';   // 매니페스트 = 단일 소유자(v1.10 ⑳: 9파일 하드코딩이 traits.json 뒤로 깨져 있었다)
+import { validate, MANIFEST, WEAPON_EVOLVE_LEVEL } from '../src/core/schema.mjs';   // 매니페스트 = 단일 소유자(v1.10 ⑳: 9파일 하드코딩이 traits.json 뒤로 깨져 있었다)
 import { makeCtx, escapeDirs, trackMotion } from './lib/escape.mjs';
 import { createWorld, giveWeapon, levelUpWeapon, givePassive, recomputeStats } from '../src/core/state.js';
 import { enemies } from '../src/core/enemies.js';
@@ -111,7 +111,7 @@ export function seedBuild(w, d, rnd, level) {
     const r = rnd();
     if (r < 0.42) {                                 // 무기 레벨업
       const owned = [];
-      for (let k = 0; k < w.slots.length; k += 1) if (w.slots[k].weaponId !== null && w.slots[k].level < 8) owned.push(k);
+      for (let k = 0; k < w.slots.length; k += 1) if (w.slots[k].weaponId !== null && w.slots[k].level < WEAPON_EVOLVE_LEVEL) owned.push(k);
       if (owned.length > 0) { levelUpWeapon(w, owned[Math.floor(rnd() * owned.length)]); continue; }
     }
     if (r < 0.62) {                                 // 신규 무기

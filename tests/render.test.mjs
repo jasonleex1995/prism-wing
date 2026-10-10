@@ -24,7 +24,7 @@ import { spawnEnemy } from '../src/core/state.js';
 import { bossHook } from '../src/core/boss.js';
 import { resolvePalette, drawWorld, drawBackground, makeInterp, captureInterp, makeFx, updateFx, bulletDensityAlpha } from '../src/render/draw.js';
 import { drawPanels, drawResults, drawDraft, wrapLines, passiveWeaponLine, weaponRowLayout, clockText } from '../src/render/hud.js';
-import { BODY_STATS } from '../src/core/schema.mjs';
+import { BODY_STATS, WEAPON_EVOLVE_LEVEL, WEAPON_MAX_LEVEL } from '../src/core/schema.mjs';
 import { giveWeapon as giveW, passiveAffectsSlot, recomputeEff } from '../src/core/state.js';
 import { buildDraft } from '../src/core/draft.js';
 import { tally } from '../src/core/score.js';
@@ -368,7 +368,7 @@ suite('render — ㊿-q 회귀 (방패 링 · 진화 카드)', () => {
     assert.eq(none.ringFrames, 0, '오빗이 없으면 방패 링이 한 번도 안 그려진다');
     const wo = mk(['forward']);
     const s = wo.slots[giveWeapon(wo, 'orbit')];
-    s.level = 8; s.evolved = true; s.effDirty = true; recomputeEff(wo, s);
+    s.level = WEAPON_EVOLVE_LEVEL; s.evolved = true; s.effDirty = true; recomputeEff(wo, s);
     assert.gt(run(wo, 30).ringFrames, 0, '진화 오빗(이지스)에는 링이 그려진다');
   });
 
@@ -382,7 +382,7 @@ suite('render — ㊿-q 회귀 (방패 링 · 진화 카드)', () => {
     for (const def of withArrays) {
       const si = giveWeapon(w, def.id);
       const draft = buildDraft(w);
-      draft.cards = [{ category: 'weaponLevel', key: `weaponLevel:${def.id}`, slot: si, weaponId: def.id, from: 7, to: 8, isEvolution: true, weight: 1 }];
+      draft.cards = [{ category: 'weaponLevel', key: `weaponLevel:${def.id}`, slot: si, weaponId: def.id, from: WEAPON_EVOLVE_LEVEL - 1, to: WEAPON_EVOLVE_LEVEL, isEvolution: true, weight: 1 }];
       const { ctx, rec } = recorderCtx(pal.hud.accent);
       drawDraft(ctx, w, pal, draft, 0);
       assert.ok(rec.texts.includes(def.evolution.name), `${def.id}: 진화 카드가 실제로 그려졌다`);
@@ -441,7 +441,7 @@ suite('render — ㊿-r 진화 카드', () => {
     category: 'weaponLevel', key: `weaponLevel:${def.id}`, slot: si, weaponId: def.id, from, to: from + 1, isEvolution, weight: 1,
   });
 
-  test('진화 카드 = 칩 「…진화」 · 진화 이름 · 소제목 「Lv.8 레벨업」 아래 그 레벨 칸의 «이전 → 이후» — 14개 무기 전부', () => {
+  test('진화 카드 = 칩 「…진화」 · 진화 이름 · 소제목 「Lv.N 레벨업」(진화 레벨) 아래 그 레벨 칸의 «이전 → 이후» — 14개 무기 전부 (㊿-zm Lv5 · 옛 Lv8)', () => {
     // ★ 2차 검토: «이후» 값만 보면 «이전» 을 한 칸 잘못 읽어도(연사 3 → 3), 조준 방식이 원문(randomInArena)으로 떠도 통과했다.
     const n = (v) => (typeof v !== 'number' ? String(v) : Number.isInteger(v) ? String(v) : String(Math.round(v * 100) / 100));
     const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -450,59 +450,61 @@ suite('render — ㊿-r 진화 카드', () => {
       const w = mkW();
       let si = w.slots.findIndex((s) => s.weaponId === def.id);
       if (si < 0) si = giveWeapon(w, def.id);
-      const texts = drawOne(w, levelCard(def, si, 7, true)).texts.map((r) => r.t);
+      const texts = drawOne(w, levelCard(def, si, WEAPON_EVOLVE_LEVEL - 1, true)).texts.map((r) => r.t);
       assert.ok(texts.includes(def.evolution.name), `${def.id}: 제목 = 진화 이름`);
       assert.ok(texts.some((t) => /진화$/.test(t)), `${def.id}: 칩이 「…진화」 — 일반 레벨업 칩(「…레벨」)과 다르다`);
-      const scalar = Object.entries(def.levels[7]).filter(([, v]) => !Array.isArray(v));
-      assert.eq(texts.includes('Lv.8 레벨업'), scalar.length > 0, `${def.id}: 소제목 「Lv.8 레벨업」은 Lv8 칸에 수치가 있을 때만`);
+      const scalar = Object.entries(def.levels[WEAPON_EVOLVE_LEVEL - 1]).filter(([, v]) => !Array.isArray(v));
+      const sub = `Lv.${WEAPON_EVOLVE_LEVEL} 레벨업`;
+      assert.eq(texts.includes(sub), scalar.length > 0, `${def.id}: 소제목 「${sub}」은 진화 칸에 수치가 있을 때만`);
       const before = Object.assign({}, def.base);
-      for (let i = 0; i < 7; i += 1) Object.assign(before, def.levels[i]);
+      for (let i = 0; i < WEAPON_EVOLVE_LEVEL - 1; i += 1) Object.assign(before, def.levels[i]);
       for (const [k, v] of scalar) {
         if (typeof v === 'string') continue;                  // 문자열 값(조준 방식)은 아래에서 한글로 본다
         const re = new RegExp(`${esc(n(before[k]))}\\D{0,3} → ${esc(n(v))}`);
-        assert.ok(texts.some((t) => re.test(t)), `${def.id}: Lv8 칸 ${k} 「${n(before[k])} → ${n(v)}」가 보인다`);
+        assert.ok(texts.some((t) => re.test(t)), `${def.id}: 진화 칸 ${k} 「${n(before[k])} → ${n(v)}」가 보인다`);
         lines += 1;
       }
       for (const t of texts) assert.eq(/randomInArena|densest|nearest|forward|sweep/.test(t), false, `${def.id}: 조준 방식이 원문으로 뜨지 않는다 (${t})`);
       if (def.id === 'barrage') assert.ok(texts.some((t) => t.includes('무작위 → 적이 몰린 곳')), '바라지: 「조준 무작위 → 적이 몰린 곳」');
     }
-    assert.gt(lines, 20, `검사한 Lv8 수치 줄 ${lines} (vacuous 아님)`);
+    assert.gt(lines, 20, `검사한 진화 칸 수치 줄 ${lines} (vacuous 아님)`);
     // 일반 레벨업 카드는 그대로 — 소제목 없음 · 좌표 배열은 「배치 변경」
     const w = mkW();
     const drone = loadData().weapons.weapons.find((x) => x.id === 'drone');
     const di = giveWeapon(w, 'drone');
-    const plain = drawOne(w, levelCard(drone, di, 2, false)).texts.map((r) => r.t);
-    assert.eq(plain.includes('Lv.3 레벨업'), false, '일반 레벨업 카드에는 소제목이 없다');
+    const plain = drawOne(w, levelCard(drone, di, 1, false)).texts.map((r) => r.t);   // ㊿-zm Lv1→2 = 위성 2기 + 배치(옛 Lv3 칸)
+    assert.eq(plain.includes('Lv.2 레벨업'), false, '일반 레벨업 카드에는 소제목이 없다');
     assert.ok(plain.some((t) => t.endsWith('변경')), '일반 레벨업 카드는 좌표 배열을 「배치 변경」으로 보인다');
   });
 
-  test('진화 뒤 레벨업(Lv9·10) 카드는 진화 이름으로 말한다 — 「오버드라이브 Lv.9」', () => {
+  test('진화 뒤 레벨업(㊿-zm Lv6 · 옛 Lv9·10) 카드는 진화 이름으로 말한다 — 「오버드라이브 Lv.6」', () => {
     const w = mkW();
     const def = w.data.weapons.weapons.find((x) => x.id === 'forward');
     const si = w.slots.findIndex((s) => s.weaponId === 'forward');
-    w.slots[si].level = 8; w.slots[si].evolved = true;
-    const texts = drawOne(w, levelCard(def, si, 8, false)).texts.map((r) => r.t);
-    assert.ok(texts.includes(`${def.evolution.name} Lv.9`), `제목 = 「${def.evolution.name} Lv.9」`);
-    assert.eq(texts.includes(`${def.name} Lv.9`), false, `「${def.name} Lv.9」가 아니다`);
+    const E = WEAPON_EVOLVE_LEVEL; const M = WEAPON_MAX_LEVEL;
+    w.slots[si].level = E; w.slots[si].evolved = true;
+    const texts = drawOne(w, levelCard(def, si, E, false)).texts.map((r) => r.t);
+    assert.ok(texts.includes(`${def.evolution.name} Lv.${E + 1}`), `제목 = 「${def.evolution.name} Lv.${E + 1}」`);
+    assert.eq(texts.includes(`${def.name} Lv.${E + 1}`), false, `「${def.name} Lv.${E + 1}」가 아니다`);
     assert.ok(texts.includes(def.evolution.desc), '효과 줄 = 진화체의 설명');
-    assert.ok(texts.includes('Lv.8/10 → 9/10'), '맨 아래 줄 = 「Lv.8/10 → 9/10」');
+    assert.ok(texts.includes(`Lv.${E}/${M} → ${E + 1}/${M}`), `맨 아래 줄 = 「Lv.${E}/${M} → ${E + 1}/${M}」`);
     assert.eq(texts.some((t) => t.includes('진화 ·')), false, '맨 아래 줄에 「… 진화 ·」가 없다 — 진화 카드의 줄과 같으면 «두 번째 진화»로 읽힌다');
   });
 
-  test('모든 무기의 진화 카드 · 진화 뒤 Lv.10 카드가 세로로 넘치지 않는다 (줄이 늘어도 상자 바닥 안)', () => {
+  test('모든 무기의 진화 카드 · 진화 뒤 최대 레벨 카드가 세로로 넘치지 않는다 (줄이 늘어도 상자 바닥 안)', () => {
     let checked = 0;
     for (const def of loadData().weapons.weapons) {
       for (const evo of [true, false]) {
         const w = mkW();
         let si = w.slots.findIndex((s) => s.weaponId === def.id);
         if (si < 0) si = giveWeapon(w, def.id);
-        if (!evo) { w.slots[si].level = 9; w.slots[si].evolved = true; }
-        const rec = drawOne(w, levelCard(def, si, evo ? 7 : 9, evo));
+        if (!evo) { w.slots[si].level = WEAPON_MAX_LEVEL - 1; w.slots[si].evolved = true; }
+        const rec = drawOne(w, levelCard(def, si, evo ? WEAPON_EVOLVE_LEVEL - 1 : WEAPON_MAX_LEVEL - 1, evo));
         const box = rec.rects.find((r) => r.w === 300 && r.h > 100);
         assert.ok(box !== undefined, `${def.id}: 카드 상자를 찾았다`);
         const inside = rec.texts.filter((r) => r.x >= box.x && r.x <= box.x + box.w && r.y >= box.y);
         const bottom = Math.max(...inside.map((r) => r.y + r.px / 2));
-        assert.lte(bottom, box.y + box.h - 6, `${def.id} ${evo ? '진화' : 'Lv.10'} 카드: 마지막 줄 바닥 ${bottom.toFixed(0)} ≤ 상자 ${box.y + box.h - 6}`);
+        assert.lte(bottom, box.y + box.h - 6, `${def.id} ${evo ? '진화' : `Lv.${WEAPON_MAX_LEVEL}`} 카드: 마지막 줄 바닥 ${bottom.toFixed(0)} ≤ 상자 ${box.y + box.h - 6}`);
         checked += 1;
       }
     }

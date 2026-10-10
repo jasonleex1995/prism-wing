@@ -12,6 +12,7 @@
  */
 
 import { suite, test, assert, loadData, baselineDifficulty } from '../tools/test.mjs';
+import { WEAPON_EVOLVE_LEVEL } from '../src/core/schema.mjs';
 import { createWorld, spawnEnemy, applyTrait, giveWeapon } from '../src/core/state.js';
 import { step, makeInput, TICK_DT, killEnemy, applyHit } from '../src/core/step.js';
 import { weapons } from '../src/core/weapons/index.js';
@@ -178,7 +179,7 @@ suite('traits — 효과 (§11.6 ㉒)', () => {
   //  ★ ㊿-zj — 위 테스트는 데이터 표는 14종 «전부» 보지만 실제 회복은 체인 한 종만 돌렸다(아래 z8 은 벌컨 한 종).
   //    나머지 12종은 한 번도 실제로 확인되지 않았다 — 조건은 맞았지만(사용자 제보 후 전수 실측) 그걸 지키는 그물이 없었다.
   //    여기서 14종을 «진화 전·진화 후» 둘 다 실제로 돌린다. 진화는 폭발·분열·자탄 같은 «새 피해 경로»를 만들기 때문이다.
-  test('㊿-zj 흡혈 여부는 14종 «전부»가 실제 전투에서 데이터대로다 — 진화 전 Lv5 · 진화 Lv8 둘 다', () => {
+  test('㊿-zj 흡혈 여부는 14종 «전부»가 실제 전투에서 데이터대로다 — 진화 직전 · 진화 레벨 둘 다', () => {
     const d = loadData();
     const hooks = d.rules.passiveHooks;
     const noDmg = new Set(d.weapons.weapons.filter((w) => !('dmg' in w.base)).map((w) => w.family));   // 피해가 없는 무기(펄스필드)
@@ -220,7 +221,7 @@ suite('traits — 효과 (§11.6 ㉒)', () => {
       return { dealt, healed };
     };
     for (const fam of Object.keys(hooks)) {
-      for (const [lv, evo] of [[5, false], [8, true]]) {
+      for (const [lv, evo] of [[WEAPON_EVOLVE_LEVEL - 1, false], [WEAPON_EVOLVE_LEVEL, true]]) {   // ㊿-zm 진화 직전 Lv4 · 진화 Lv5(옛 Lv5·7 · Lv8)
         const tag = `${fam} Lv${lv}${evo ? ' 진화' : ''}`;
         const { dealt, healed } = measure(fam, lv, evo);
         if (noDmg.has(fam)) {

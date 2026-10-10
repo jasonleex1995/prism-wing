@@ -4,7 +4,8 @@
  *   깔고 src/main.js 를 실제로 부팅한 뒤, 시계를 손으로 돌리며 **화면에 그려진 것만** 본다(글자 · 카드 테두리 굵기 — 블랙박스, main.js 에 검사용 구멍을 내지 않는다).
  *   왜: main.js 는 브라우저 전용이라 core 테스트가 닿지 않고, 소스 조각 검사(S63)는 «endAttract 가 attract 를 안 끈다»·«끝 깃발이 안 지워진다»
  *   같은 흐름 결함은 못 보면서 따옴표·줄바꿈만 바뀌어도 깨졌다(검토).
- * usage: node tests/attract-driver.mjs <flow | small | demo | death>   ·   env PRISM_META_PATCH = data/meta.json 위에 덮어쓸 JSON
+ * usage: node tests/attract-driver.mjs <flow | small | demo | death | perf>   ·   env PRISM_META_PATCH = data/meta.json 위에 덮어쓸 JSON
+ *   ㊿-zl perf = `?demo&perf` 로 부팅하고, 이 판에서만 document.createElement('canvas') 를 흉내 내 패널 캐시(§9.4.1)가 실제로 돈다.
  * 출력: 마지막 줄 = 측정값 JSON 한 줄(판정은 테스트 파일이 한다)
  */
 import { readFileSync } from 'node:fs';
@@ -39,6 +40,20 @@ class DotSink extends Array {
   push(...a) { for (const x of a) { allDot.add(String(x)); texts.push(String(x)); } return 0; }
 }
 const dotSink = new DotSink();
+let drawImages = 0;
+//  ㊿-zl perf 판 — 패널 캐시용 오프스크린 캔버스 흉내. 거기 그린 글자는 «화면»(texts)이 아니라 layerTexts 로 간다.
+const layerCanvases = [];
+const layerTexts = [];
+function fakeLayerCanvas() {
+  const st = {};
+  const g = new Proxy({ fillText: (t) => { layerTexts.push(String(t)); }, measureText: (t) => ({ width: String(t).length * 8 }) }, {
+    get(t, k) { if (k in t) return t[k]; if (k in st) return st[k]; return () => {}; },
+    set(t, k, v) { st[k] = v; return true; },
+  });
+  const c = { width: 0, height: 0, getContext: () => g };
+  layerCanvases.push(c);
+  return c;
+}
 let strokes = [];
 let errors = 0;
 const errorSamples = [];
@@ -59,6 +74,7 @@ const ctx = new Proxy({
   createLinearGradient: () => ({ addColorStop() {} }),
   createRadialGradient: () => ({ addColorStop() {} }),
   getLineDash: () => [],
+  drawImage: () => { drawImages += 1; },   // ㊿-zl 패널 캐시를 찍은 횟수(perf 판)
 }, {
   get(t, k) { if (k in t) return t[k]; if (k in state2d) return state2d[k]; return () => {}; },
   set(t, k, v) { state2d[k] = v; return true; },
@@ -76,9 +92,10 @@ globalThis.document = {
   title: 'PRISM WING',
   hidden: false,
   getElementById: (id) => (id === 'game' ? canvas : fatalEl),
+  ...(SCEN === 'perf' ? { createElement: (tag) => (tag === 'canvas' ? fakeLayerCanvas() : {}) } : {}),
   addEventListener: (type, fn) => { (docListeners[type] ||= []).push(fn); },
 };
-Object.defineProperty(globalThis, 'location', { value: { search: SCEN === 'demo' ? '?demo' : '' }, configurable: true, writable: true });
+Object.defineProperty(globalThis, 'location', { value: { search: SCEN === 'demo' ? '?demo' : SCEN === 'perf' ? '?demo&perf' : '' }, configurable: true, writable: true });
 globalThis.fetch = async (url) => {
   const p = fileURLToPath(url);
   const body = p.endsWith('/data/meta.json') ? meta : JSON.parse(readFileSync(p, 'utf8'));
@@ -244,6 +261,28 @@ async function main() {
     if (t >= 0) { const t0 = clock; while (isAutoDraft() && clock - t0 < 5000) frame(8); out.autoDraftDwellMs = clock - t0; }
     until(() => { watch(); return false; }, 20000);
     out.tagSeen = tag; out.humanDraftSeen = human;
+    out.perfOff = globalThis.window.__perf === undefined && !texts.some((t) => t.startsWith('PERF '));   // ㊿-zl `?perf` 없이는 계측도 표시도 없다
+  } else if (SCEN === 'perf') {
+    //  ㊿-zl `?perf` — 오버레이를 그리고 · 끊긴 프레임만 기록하고 · 패널은 캐시를 거친다
+    for (let i = 0; i < 300; i += 1) frame(16);               // 데모 판 ~5초(60Hz). 간격 16ms = 끊김 아님
+    const P = globalThis.window.__perf;
+    out.perfObj = P !== undefined;
+    out.hitchesAtSmooth = P ? P.hitchCount : -1;
+    //  끊김 한 번(90ms) — 드래프트 화면에서의 긴 간격은 세지 않으므로, 플레이 중일 때까지 기다렸다가 넣는다(몇 번까지 다시 시도)
+    out.hitchRecorded = false;
+    for (let k = 0; k < 10 && P && !out.hitchRecorded; k += 1) {
+      for (let i = 0; i < 400 && has('LEVEL UP'); i += 1) frame(16);
+      const before = P.hitchCount;
+      frame(90);
+      out.hitchRecorded = P.hitchCount === before + 1;
+    }
+    out.lastHitch = P && P.hitches.length > 0 ? P.hitches[P.hitches.length - 1] : null;
+    for (let i = 0; i < 40; i += 1) frame(16);                // 오버레이 글줄은 0.5초마다 새로 짓는다
+    out.perfLines = texts.filter((t) => t.startsWith('PERF ') || t.startsWith('로직 ') || t.startsWith('끊김 ') || t.startsWith('#'));
+    out.layerCanvases = layerCanvases.length;
+    out.layerPanelText = layerTexts.includes('상성표') && layerTexts.includes('무기 슬롯');
+    out.screenPanelText = texts.includes('상성표');
+    out.drawImages = drawImages;
   } else if (SCEN === 'death') {
     frame(16);
     until(isDemo, 60000);

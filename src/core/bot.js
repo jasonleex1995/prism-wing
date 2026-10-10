@@ -18,6 +18,7 @@
 
 import { TICK_HZ, TICK_DT } from './step.js';
 import { elementMul } from './elements.js';
+import { WEAPON_EVOLVE_LEVEL } from './schema.mjs';
 
 // ── 조향 파라미터(튜닝 축 — bot.js 인라인 리터럴, §데이터 아님) ───────────────────
 // ★ 변종 C — ROLLOUT DODGER (지연 스냅샷 + 짧은 지평 전개 탐색).
@@ -617,14 +618,15 @@ export function botDraftPick(world, draft) {
     if (cards[i].category === 'weaponLevel' && cards[i].isEvolution === true) return i;
   }
 
-  // ★ (2) 캐리(가장 레벨 높은 무기)가 진화 임박(Lv≥6)인데 짝 패시브가 부족하면 그 패시브를 집는다(진화 게이트).
+  // ★ (2) 캐리(가장 레벨 높은 무기)가 진화 임박(진화 직전 레벨 이상 — ㊿-zn Lv2 · 옛 Lv6)인데 짝 패시브가 부족하면 그 패시브를 집는다(진화 게이트).
+  //   짝 패시브는 이제 한 장(Lv1)이면 된다 — 한 칸 앞에서 챙기면 늦지 않다.
   let carry = null;
   for (let si = 0; si < world.slots.length; si += 1) {
     const s = world.slots[si];
     if (s.weaponId === null) continue;
     if (carry === null || s.level > carry.level) carry = s;
   }
-  if (carry !== null && carry.level >= 6) {
+  if (carry !== null && carry.level >= WEAPON_EVOLVE_LEVEL - 1) {
     const req = world.weaponDefs[carry.family].evolution.requiresPassive;
     let lv = 0;
     for (let j = 0; j < world.passives.length; j += 1) {

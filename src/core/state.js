@@ -718,13 +718,13 @@ export function giveWeapon(world, weaponId) {
   return -1;                  // §11.1 — 만석이면 newWeapon 카드가 애초에 풀에 없다
 }
 
-/** §9.5 — Lv7 → Lv8 레벨업 카드 그 자체가 진화 카드다 */
+/** §9.5 — 진화 직전(WEAPON_EVOLVE_LEVEL − 1) → 진화 레벨의 레벨업 카드 그 자체가 진화 카드다 (㊿-zm: Lv4 → Lv5) */
 export function levelUpWeapon(world, slotIndex) {
   const s = world.slots[slotIndex];
   if (s.weaponId === null) throw new Error(`state: 빈 슬롯 ${slotIndex} 의 레벨업 (§9.5)`);
-  if (s.level >= WEAPON_MAX_LEVEL) return false;   // Lv10 에서 종료 (v1.10 ⑱)
+  if (s.level >= WEAPON_MAX_LEVEL) return false;   // 최대 레벨에서 종료 (㊿-zm Lv6 · 옛 Lv10)
   s.level += 1;
-  if (s.level === WEAPON_EVOLVE_LEVEL) s.evolved = true;   // Lv8 = 진화. Lv9·10 은 진화체 강화
+  if (s.level === WEAPON_EVOLVE_LEVEL) s.evolved = true;   // 진화 레벨 = 진화(㊿-zm Lv5). 그 뒤(Lv6)는 진화체 강화
   s.effDirty = true;
   return true;
 }

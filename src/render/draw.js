@@ -97,9 +97,24 @@ function desaturate(hex) {
   return labToHex(L, 0, 0);
 }
 
+/**
+ * ★ ㊿-zl — 색 문자열을 캐시한다. 예전엔 부를 때마다 배열 + 문자열을 새로 만들어, 프레임마다 수백 개의 쓰레기가
+ *   생겼다(메모리 청소 멈춤의 연료 — 테스터 제보 「중간중간 끊긴다」, 2026-10-10). 캔버스는 알파를 8비트(1/255 칸)로
+ *   저장하므로, 알파를 1/255 칸에 맞춘 문자열을 재사용해도 칠해지는 색은 같다. 비유한 알파(NaN)는 예전처럼 그대로 새어
+ *   나간다 — 잘못된 색을 숨기지 않는다(tests/render.test.mjs 의 브라우저 충실 스텁이 잡는다).
+ */
+const RGBA_CACHE = new Map();      // hex → 알파 칸(0~255)별 문자열
 function rgba(hex, alpha) {
-  const [r, g, b] = hexToRgb(hex);
-  return `rgba(${r},${g},${b},${alpha})`;
+  let row = RGBA_CACHE.get(hex);
+  if (row === undefined) { row = []; RGBA_CACHE.set(hex, row); }
+  const a = alpha <= 0 ? 0 : alpha >= 1 ? 255 : Math.round(alpha * 255);
+  let s = row[a];
+  if (s === undefined) {
+    const [r, g, b] = hexToRgb(hex);
+    s = `rgba(${r},${g},${b},${a / 255})`;
+    row[a] = s;
+  }
+  return s;
 }
 
 // ---------------------------------------------------------------------------
@@ -702,29 +717,35 @@ function drawGroundZones(ctx, world, pal) {
 // ---------------------------------------------------------------------------
 function drawPickups(ctx, world, pal, interp, alpha) {
   const items = world.pickups.items;
+  // v1.5 — 픽업 kind 는 xp (회복 픽업 폐지) · v1.10 ⑲ trait. 마름모, 값이 클수록 크게 (플레이테스트 #5b)
+  // ★ ㊿-zl 배치 — 경험치 구슬은 한 색(pickup.xp, 불투명)·한 모양이라 «한 경로 → fill 1회»로 그린다(탄의 ㉛ 과 같은 방법).
+  //   같은 불투명 색 도형의 합집합이라 겹친 구슬도 낱개 그리기와 같은 그림이다. 위기 구간에 깔리는 100~200개가 fill 1회가 된다.
+  let anyXp = false;
+  ctx.beginPath();
   for (let i = 0; i < items.length; i += 1) {
     const q = items[i];
-    if (!q.alive) continue;
+    if (!q.alive || q.kind === 'trait') continue;
+    const s = 2.2 + Math.min(q.value, 24) * 0.09;            // 1→2.3 · 6→2.7 · 12→3.3 · 병합24+→4.4
+    glyphSub(ctx, 'water', lerpX(interp, interp.pickups, q, alpha), lerpY(interp, interp.pickups, q, alpha), s);
+    anyXp = true;
+  }
+  if (anyXp) { ctx.fillStyle = pal.pickup.xp; ctx.fill(); }
+  // §11.6(v1.10 ⑲) 특성 구슬 — 판에 하나뿐인 «보상 그 자체». 경험치 구슬 위에 그린다.
+  for (let i = 0; i < items.length; i += 1) {
+    const q = items[i];
+    if (!q.alive || q.kind !== 'trait') continue;
     const x = lerpX(interp, interp.pickups, q, alpha);
     const y = lerpY(interp, interp.pickups, q, alpha);
-    if (q.kind === 'trait') {
-      // §11.6(v1.10 ⑲) 특성 구슬 — 금색(pickup.trait = hud.accent 채널) 원 + 맥동하는 테두리 링. §7.8 의 «≤6px 납작»
-      //   규칙은 XP 픽업의 것이고, 이 구슬은 판에 하나뿐인 «보상 그 자체»라 크게(반지름 9) 보인다.
-      const pulse = 0.5 + 0.5 * Math.sin(world.time * Math.PI * 2 * 1.5);
-      ctx.fillStyle = pal.pickup.trait;
-      ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = rgba(pal.pickup.trait, 0.35 + 0.45 * pulse);
-      ctx.beginPath(); ctx.arc(x, y, 13 + pulse * 3, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = rgba(pal.threat.bulletCore, 0.9);
-      ctx.beginPath(); ctx.arc(x - 3, y - 3, 2.5, 0, Math.PI * 2); ctx.fill();
-      continue;
-    }
-    // v1.5 — 픽업 kind 는 xp (회복 픽업 폐지) · v1.10 ⑲ trait. 마름모, 값이 클수록 크게 (플레이테스트 #5b)
-    ctx.fillStyle = pal.pickup.xp;
-    const s = 2.2 + Math.min(q.value, 24) * 0.09;            // 1→2.3 · 6→2.7 · 12→3.3 · 병합24+→4.4
-    glyphPath(ctx, 'water', x, y, s);
-    ctx.fill();
+    // 금색(pickup.trait = hud.accent 채널) 원 + 맥동하는 테두리 링. §7.8 의 «≤6px 납작»
+    //   규칙은 XP 픽업의 것이고, 이 구슬은 판에 하나뿐인 «보상 그 자체»라 크게(반지름 9) 보인다.
+    const pulse = 0.5 + 0.5 * Math.sin(world.time * Math.PI * 2 * 1.5);
+    ctx.fillStyle = pal.pickup.trait;
+    ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = rgba(pal.pickup.trait, 0.35 + 0.45 * pulse);
+    ctx.beginPath(); ctx.arc(x, y, 13 + pulse * 3, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = rgba(pal.threat.bulletCore, 0.9);
+    ctx.beginPath(); ctx.arc(x - 3, y - 3, 2.5, 0, Math.PI * 2); ctx.fill();
   }
 }
 
@@ -1161,19 +1182,21 @@ function drawBurst(ctx, pal, vh, h, t) {
   ctx.stroke();
 
   // 스파크 — 중심에서 방사. 각도는 seed 로 분산(결정적, 무-RNG)
+  //   ★ ㊿-zl — 한 버스트의 스파크는 «한 경로 → stroke 1회». 색·굵기·알파가 같고 방사선끼리 겹치지 않아(시작 반경 baseR 의
+  //     원 둘레 간격 > 선 굵기) 낱개 stroke 와 같은 그림이다. 버스트당 stroke 가 nSpark 회 → 1회.
   const sparkLen = (isSuper ? 14 : 8) * (0.4 + t);
   ctx.lineWidth = isSuper ? 2 : 1.5;
   ctx.strokeStyle = color;
   ctx.globalAlpha = fade * (isSuper ? 0.9 : 0.55);
+  ctx.beginPath();
   for (let k = 0; k < nSpark; k += 1) {
     const ang = h.seed * GOLDEN_ANGLE + (k * Math.PI * 2) / Math.max(1, nSpark);
     const cx = h.x + Math.cos(ang) * baseR;
     const cy = h.y + Math.sin(ang) * baseR;
-    ctx.beginPath();
     ctx.moveTo(cx, cy);
     ctx.lineTo(cx + Math.cos(ang) * sparkLen, cy + Math.sin(ang) * sparkLen);
-    ctx.stroke();
   }
+  if (nSpark > 0) ctx.stroke();
 
   // 처치 FX — 흰 링 확장 (§7.7 처치: 속성색 대형 파열 + 흰 링)
   if (h.killed) {

@@ -4,13 +4,14 @@
  * 대상 (임무):
  *   · 사전할당 풀: alloc/release 대칭 · 누수 0 · gen 증가 · free 스택 무결 (§10.3 · §12.1)
  *   · spawn* 필드 사상 + 캡 초과 정책 (rejectSpawn/defer/merge, §12.1)
- *   · xpToNext = §9.9 poly, float **무반올림** (§13.5 누적 26,450 검산)
+ *   · xpToNext = §9.9 poly, float **무반올림** (§13.5 누적 검산 — ㊿-zm 부터는 데이터의 base·exp 로 독립 계산한 연속 합과 대조)
  *   · recomputeEff: levels[] 부분 오버라이드 누적 + 훅 H1~H4 + H3 클램프 (§9.6.1)
  *   · give/levelUp/swap/givePassive + recomputeStats (hp 델타 회복, elementBonusMul 대입)
  *
  * 값은 전부 정본/데이터에서 유도한다 (하드코딩 매직넘버 지양).
  */
 import { suite, test, assert, loadData, baselineDifficulty } from '../tools/test.mjs';
+import { WEAPON_EVOLVE_LEVEL, WEAPON_MAX_LEVEL } from '../src/core/schema.mjs';
 import { makePool, createWorld, recomputeStats, recomputeEff, giveWeapon, levelUpWeapon, givePassive, spawnPlayerBullet, spawnEnemy, spawnPickup, spawnEnemyBullet, xpToNext, familyDmgMul } from '../src/core/state.js';
 import { weapons } from '../src/core/weapons/index.js';
 import { killEnemy } from '../src/core/step.js';
@@ -90,19 +91,28 @@ suite('state · xpToNext (§9.9 · §13.5)', () => {
   });
 
   test('float — 레벨별 반올림이 없다', () => {
-    const w = mk();
+    // ★ ㊿-zn — 지금 곡선(8·L^2.0)은 정수 지수라 값이 원래 정수다(10 → 800). «반올림이 없다»는 코드의 성질이라
+    //   소수 지수의 곡선을 끼워 본다(데이터 값과 무관하게 xpToNext 가 float 를 그대로 돌려주는가).
+    const d = loadData();
+    const w = { data: { ...d, meta: { ...d.meta, xp: { ...d.meta.xp, base: 6, exp: 1.32 } } } };
     const v = xpToNext(w, 10);        // 6×10^1.32 = 125.357…
     assert.ne(v, Math.round(v), '반올림된 정수가 아니다');
     assert.ne(v, Math.floor(v), '내림된 값도 아니다');
   });
 
-  test('§13.5 누적 검산 Σ_{L=1}^{53} = 26,450 (연속 합)', () => {
+  test('§13.5 누적 검산 — Σ_{L=1}^{53} xpToNext = Σ base·L^exp (연속 합 · 레벨별 반올림 없음)', () => {
+    // ★ ㊿-zm — 곡선이 6.7·L^1.7 로 바뀌어(A안) 옛 고정값 26,450(5.02337·L^1.37 의 Lv54 누적)은 더 이상 이 데이터의 값이 아니다.
+    //   이 검사의 목적은 «값»이 아니라 «float 독법»이다: 데이터의 base·exp 로 독립 계산한 연속 합과 정확히 같아야 한다.
     const w = mk();
-    let sum = 0;
-    for (let L = 1; L <= 53; L += 1) sum += xpToNext(w, L);
-    assert.eq(Math.round(sum), 26450, '누적 XP(Lv54) 반올림 = 26,450');
-    // 반올림 누산이었다면 이 연속 합이 어긋난다 → float 독법의 회귀 가드
-    assert.ne(sum, Math.round(sum), '합 자체는 정수가 아니다 (float 누산)');
+    const { base, exp } = w.data.meta.xp;
+    let sum = 0; let want = 0;
+    for (let L = 1; L <= 53; L += 1) { sum += xpToNext(w, L); want += base * Math.pow(L, exp); }
+    assert.near(sum, want, 1e-6, `누적 XP(Lv54) = ${want.toFixed(1)} (연속 합)`);
+    // 반올림 누산이었다면 이 연속 합이 어긋난다 → float 독법의 회귀 가드(소수 지수 곡선으로 — 위 테스트와 같은 이유)
+    const d = w.data;
+    const wf = { data: { ...d, meta: { ...d.meta, xp: { ...d.meta.xp, base: 6, exp: 1.32 } } } };
+    let fsum = 0; for (let L = 1; L <= 53; L += 1) fsum += xpToNext(wf, L);
+    assert.ne(fsum, Math.round(fsum), '합 자체는 정수가 아니다 (float 누산)');
   });
 });
 
@@ -224,34 +234,36 @@ suite('state · recomputeEff 훅 (§9.6.1)', () => {
     const w = mk();
     const i = giveWeapon(w, 'seeker');
     const s = w.slots[i];
-    for (let k = 0; k < 4; k += 1) levelUpWeapon(w, i);   // Lv1 → Lv5
-    const e5 = recomputeEff(w, s);
-    assert.eq(e5.count, 3, 'seeker Lv5 count = 3 (levels[4]) — base 1 이 아니다');
-    for (let k = 0; k < 2; k += 1) levelUpWeapon(w, i);   // → Lv7
+    //   ★ ㊿-zn — 4단계 표(옛 1·5·8·10번째 칸): seeker Lv2 = {dmg 4 · count 3 · turnRate 320} · Lv3 = {cooldown · dmg 7 · pierce 1 · count 4}
+    levelUpWeapon(w, i);                                  // Lv1 → Lv2
+    const e2 = recomputeEff(w, s);
+    assert.eq(e2.count, 3, 'seeker Lv2 count = 3 (levels[1]) — base 1 이 아니다');
+    levelUpWeapon(w, i);                                  // → Lv3
     s.effDirty = true;
-    const e7 = recomputeEff(w, s);
-    assert.eq(e7.pierce, 1, 'seeker Lv7 pierce = 1 (levels[6]) — 증발하지 않는다');
-    // ★ 하드코딩 대신 데이터에서 «해소»한다(튜닝에 강함): Lv7 의 dmg = base ∪ levels[0..6] 중 마지막으로 정의된 값.
-    //   특정 행(levels[5])이 dmg 를 갖는다고 가정하면 밸런스 재저작(㊳ 곡선 기울이기)에서 깨진다 — 규칙을 검사하지 값을 검사하지 않는다.
+    const e3 = recomputeEff(w, s);
+    assert.eq(e3.pierce, 1, 'seeker Lv3 pierce = 1 (levels[2])');
+    assert.eq(e3.turnRateDegSec, 320, 'seeker Lv3 선회 320 — 앞 칸(levels[1])의 값이 증발하지 않는다');
+    // ★ 하드코딩 대신 데이터에서 «해소»한다(튜닝에 강함): Lv3 의 dmg = base ∪ levels[0..2] 중 마지막으로 정의된 값.
+    //   특정 행이 dmg 를 갖는다고 가정하면 밸런스 재저작(㊳ 곡선 기울이기)에서 깨진다 — 규칙을 검사하지 값을 검사하지 않는다.
     const sk = w.data.weapons.weapons.find((x) => x.id === 'seeker');
     let wantDmg = sk.base.dmg;
-    for (let L = 0; L < 7; L += 1) if (typeof sk.levels[L].dmg === 'number') wantDmg = sk.levels[L].dmg;
-    assert.eq(e7.dmg, wantDmg, `Lv7 dmg = ${wantDmg} (levels[0..6] 의 마지막 dmg 오버라이드가 상속된다)`);
+    for (let L = 0; L < 3; L += 1) if (typeof sk.levels[L].dmg === 'number') wantDmg = sk.levels[L].dmg;
+    assert.eq(e3.dmg, wantDmg, `Lv3 dmg = ${wantDmg} (levels[0..2] 의 마지막 dmg 오버라이드가 상속된다)`);
   });
 
-  test('forward levels[4] = {count:2, spreadDeg:6} 누적 (양성)', () => {
+  test('forward Lv3 — count 2 · spreadDeg 6 은 앞 칸(levels[1])에서 상속된다 (양성 · ㊿-zn)', () => {
     const w = mk();
     const s = w.slots[0];                                 // forward Lv1
-    for (let k = 0; k < 4; k += 1) levelUpWeapon(w, 0);   // → Lv5
+    for (let k = 0; k < 2; k += 1) levelUpWeapon(w, 0);   // → Lv3
     s.effDirty = true;
     const e = recomputeEff(w, s);
-    assert.eq(e.count, 2, 'Lv5 count 2');
-    assert.eq(e.spreadDeg, 6, 'Lv5 spreadDeg 6');
-    // 값이 아니라 «상속 규칙»을 검사한다 — base ∪ levels[0..4] 의 마지막 dmg 오버라이드(㊳ 밸런스 재저작에 강하다)
+    assert.eq(e.count, 2, 'Lv3 count 2 (Lv2 칸에서 상속)');
+    assert.eq(e.spreadDeg, 6, 'Lv3 spreadDeg 6 (Lv2 칸에서 상속)');
+    // 값이 아니라 «상속 규칙»을 검사한다 — base ∪ levels[0..2] 의 마지막 dmg 오버라이드(㊳ 밸런스 재저작에 강하다)
     const fw = w.data.weapons.weapons.find((x) => x.id === 'forward');
-    let wantDmg5 = fw.base.dmg;
-    for (let L = 0; L < 5; L += 1) if (typeof fw.levels[L].dmg === 'number') wantDmg5 = fw.levels[L].dmg;
-    assert.eq(e.dmg, wantDmg5, `Lv5 dmg = ${wantDmg5} (levels[0..4] 의 마지막 오버라이드 상속)`);
+    let wantDmg = fw.base.dmg;
+    for (let L = 0; L < 3; L += 1) if (typeof fw.levels[L].dmg === 'number') wantDmg = fw.levels[L].dmg;
+    assert.eq(e.dmg, wantDmg, `Lv3 dmg = ${wantDmg} (levels[0..2] 의 마지막 오버라이드 상속)`);
   });
 
   test('H1 fireRateMul — 주기 = base / (1 + fireRateMul)', () => {
@@ -359,8 +371,8 @@ suite('state · recomputeEff 훅 (§9.6.1)', () => {
     const w = mk();
     const i = giveWeapon(w, 'nova');
     const s = w.slots[i];
-    for (let k = 0; k < 7; k += 1) levelUpWeapon(w, i);   // Lv1 → Lv8 = evolved
-    assert.ok(s.evolved, 'Lv8 = evolved');
+    for (let k = 1; k < WEAPON_EVOLVE_LEVEL; k += 1) levelUpWeapon(w, i);   // Lv1 → 진화 레벨 = evolved
+    assert.ok(s.evolved, '진화 레벨 = evolved');
     const ep = w.data.weapons.weapons.find((x) => x.family === 'nova').evolution.params;
     w.stats.areaMul = 1;                                  // ×2
     s.effDirty = true;
@@ -368,7 +380,7 @@ suite('state · recomputeEff 훅 (§9.6.1)', () => {
     assert.near(e.evoRing2Radius, ep.evoRing2Radius * 2, 1e-12, 'evoRing2Radius (진화 전용) ×(1+areaMul)');
     assert.eq(e.evoSecondaryDmgMul, ep.evoSecondaryDmgMul, 'evoSecondaryDmgMul 합집합 (areaKeys 아님 → 불변)');
     const fi = giveWeapon(w, 'fan'); const fs = w.slots[fi];
-    for (let k = 0; k < 7; k += 1) levelUpWeapon(w, fi);
+    for (let k = 1; k < WEAPON_EVOLVE_LEVEL; k += 1) levelUpWeapon(w, fi);
     const fp = w.data.weapons.weapons.find((x) => x.family === 'fan').evolution.params;
     assert.eq(recomputeEff(w, fs).evoBlastRadius, fp.evoBlastRadius, '팬 폭발 반경은 코일 무효(㉚)');
   });
@@ -393,16 +405,20 @@ suite('state · 성장 give/levelUp/swap/passive', () => {
     assert.throws(() => giveWeapon(w, 'no-weapon'), '미지 무기 throw');
   });
 
-  test('levelUpWeapon — Lv8 에서 evolved, Lv9·10 은 진화체 강화, Lv10 종료, 빈 슬롯 throw (v1.10 ⑱)', () => {
+  test('levelUpWeapon — 진화 레벨(Lv3)에서 evolved, 그 뒤(Lv4)는 진화체 강화, 최대 레벨에서 종료, 빈 슬롯 throw (㊿-zn · 옛 Lv8 · Lv10)', () => {
     const w = mk();
-    for (let k = 1; k < 8; k += 1) { assert.ok(levelUpWeapon(w, 0), `Lv${k}→${k + 1}`); if (k < 7) assert.eq(w.slots[0].evolved, false, `Lv${k + 1} 은 아직 진화 전`); }
-    assert.eq(w.slots[0].level, 8, 'Lv8 도달');
-    assert.ok(w.slots[0].evolved, 'Lv8 = evolved');
-    assert.ok(levelUpWeapon(w, 0), 'Lv9 (진화체 강화)');
-    assert.ok(levelUpWeapon(w, 0), 'Lv10');
-    assert.eq(w.slots[0].level, 10, 'Lv10 도달');
+    assert.eq(WEAPON_EVOLVE_LEVEL, 3, '㊿-zn 진화 = Lv3');
+    assert.eq(WEAPON_MAX_LEVEL, 4, '㊿-zn 최대 = Lv4');
+    for (let k = 1; k < WEAPON_EVOLVE_LEVEL; k += 1) {
+      assert.ok(levelUpWeapon(w, 0), `Lv${k}→${k + 1}`);
+      if (k + 1 < WEAPON_EVOLVE_LEVEL) assert.eq(w.slots[0].evolved, false, `Lv${k + 1} 은 아직 진화 전`);
+    }
+    assert.eq(w.slots[0].level, WEAPON_EVOLVE_LEVEL, '진화 레벨 도달');
+    assert.ok(w.slots[0].evolved, '진화 레벨 = evolved');
+    for (let k = WEAPON_EVOLVE_LEVEL; k < WEAPON_MAX_LEVEL; k += 1) assert.ok(levelUpWeapon(w, 0), `Lv${k + 1} (진화체 강화)`);
+    assert.eq(w.slots[0].level, WEAPON_MAX_LEVEL, '최대 레벨 도달');
     assert.ok(w.slots[0].evolved, '여전히 evolved');
-    assert.eq(levelUpWeapon(w, 0), false, 'Lv10 에서 종료 (Lv11 없음)');
+    assert.eq(levelUpWeapon(w, 0), false, `Lv${WEAPON_MAX_LEVEL} 에서 종료 (그 위 없음)`);
     assert.throws(() => levelUpWeapon(w, 5), '빈 슬롯 레벨업 throw');
   });
 

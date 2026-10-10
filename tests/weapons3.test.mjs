@@ -11,6 +11,7 @@
  */
 
 import { suite, test, assert, loadData, baselineDifficulty } from '../tools/test.mjs';
+import { WEAPON_EVOLVE_LEVEL, WEAPON_MAX_LEVEL } from '../src/core/schema.mjs';
 import { createWorld, recomputeEff, giveWeapon, spawnEnemy, givePassive } from '../src/core/state.js';
 import { step, makeInput, TICK_DT } from '../src/core/step.js';
 import { weapons } from '../src/core/weapons/index.js';
@@ -78,7 +79,7 @@ suite('weapons3 · 미사일', () => {
     tick(w, Math.round(1.6 / dt));
     assert.lt(a.hp, 1e6, '직격 적 피해'); assert.lt(b.hp, 1e6, '반경 안 이웃도 피해'); assert.eq(far.hp, 1e6, '반경 밖은 무피해');
     assert.near((1e6 - a.hp), 2 * (1e6 - b.hp), 1e-9, '직격 = 탄 + 폭발(2배) · 이웃 = 폭발만');
-    const w2 = mkWorld(); const [s2, eff2] = setup(w2, 'missile', 8, true);
+    const w2 = mkWorld(); const [s2, eff2] = setup(w2, 'missile', WEAPON_EVOLVE_LEVEL, true);
     dummy(w2, w2.player.x, w2.player.y - 200);
     let seenChild = 0; let childLife = -1;
     for (let i = 0; i < Math.round(3 / dt); i += 1) { tick(w2, 1); for (const bb of live(w2, 'missile')) if (bb.s0 === 1) { seenChild += 1; childLife = bb.lifetimeSec; } }
@@ -98,15 +99,16 @@ suite('weapons3 · 미사일', () => {
       return [1e6 - t.hp, eff];
     };
     const v = (id, n) => loadData().passives.passives.find((p) => p.id === id).values[n - 1];
-    const [m0] = run('missile', 'shockwave', 0); const [m5] = run('missile', 'shockwave', 5);
-    assert.gt(m0, 0, '미사일 기준 피해'); assert.near(m5 / m0, 1 + v('shockwave', 5), 1e-9, '미사일 피해 ×(1 + 충격파 Lv5)');
-    const [f0] = run('forward', 'shockwave', 0); const [f5] = run('forward', 'shockwave', 5);
+    const P = loadData().passives.maxLevel;          // ㊿-zn 패시브 만렙(3) — 옛 검사는 Lv5(10단계의 중간)였다
+    const [m0] = run('missile', 'shockwave', 0); const [m5] = run('missile', 'shockwave', P);
+    assert.gt(m0, 0, '미사일 기준 피해'); assert.near(m5 / m0, 1 + v('shockwave', P), 1e-9, `미사일 피해 ×(1 + 충격파 Lv${P})`);
+    const [f0] = run('forward', 'shockwave', 0); const [f5] = run('forward', 'shockwave', P);
     assert.near(f5, f0, 1e-9, '벌컨 탄은 충격파 무관');
-    const [f0b] = run('forward', 'highvolt', 0); const [f5b] = run('forward', 'highvolt', 5);
+    const [f0b] = run('forward', 'highvolt', 0); const [f5b] = run('forward', 'highvolt', P);
     assert.near(f5b, f0b, 1e-9, '벌컨 탄은 고압 무관(탄 무기엔 피해 패시브가 없다)');
-    const [l0] = run('lance', 'highvolt', 0); const [l5] = run('lance', 'highvolt', 5);
-    assert.gt(l0, 0, '랜스 기준 피해'); assert.near(l5 / l0, 1 + v('highvolt', 5), 1e-6, '랜스 피해 ×(1 + 고압 Lv5)');
-    const [l0s] = run('lance', 'shockwave', 0); const [l5s] = run('lance', 'shockwave', 5);
+    const [l0] = run('lance', 'highvolt', 0); const [l5] = run('lance', 'highvolt', P);
+    assert.gt(l0, 0, '랜스 기준 피해'); assert.near(l5 / l0, 1 + v('highvolt', P), 1e-6, `랜스 피해 ×(1 + 고압 Lv${P})`);
+    const [l0s] = run('lance', 'shockwave', 0); const [l5s] = run('lance', 'shockwave', P);
     assert.near(l5s, l0s, 1e-9, '랜스는 충격파 무관');
   });
 });
@@ -124,7 +126,7 @@ suite('weapons3 · 체인 라이트닝', () => {
     for (let i = 0; i + 1 < hit.length; i += 1) assert.ok(1e6 - hit[i + 1].hp < 1e6 - hit[i].hp, `홉 ${i + 1} 피해 < 홉 ${i}`);
     assert.near((1e6 - hit[1].hp) / (1e6 - hit[0].hp), eff.chainDmgMul, 1e-9, '감쇠 = chainDmgMul');
     assert.eq(w.chainFx.count, eff.chainCount, '선분 링 = 이번 틱의 홉 수(렌더가 이 프레임에 읽는다, 다음 step 이 비운다)');
-    const w2 = mkWorld(); const [s2, eff2] = setup(w2, 'chain', 8, true);
+    const w2 = mkWorld(); const [s2, eff2] = setup(w2, 'chain', WEAPON_EVOLVE_LEVEL, true);
     // 한 줄(세로)로 세운다 — 탐욕 최근접 경로가 «되돌아오지 않고» 끝까지 이어지게(격자는 모서리에서 끊긴다)
     const es2 = []; const gap = eff2.chainRangePx * 0.6;
     for (let i = 0; i < 12; i += 1) es2.push(dummy(w2, w2.player.x, w2.player.y - 100 - i * gap * 0.5));
@@ -138,7 +140,7 @@ suite('weapons3 · 체인 라이트닝', () => {
   //  ★ 이 테스트는 «갈라짐이 실제로 일어났음»을 먼저 증명한다 — 안 그러면 분기 없는 한 줄기를 보고 통과한다(공허 통과 = 위반).
   test('갈라짐(폭풍)은 한 적을 두 번 때리지 않는다 — 홉 수 = 피해 입은 서로 다른 적의 수', () => {
     const w = mkWorld();
-    const [s, eff] = setup(w, 'chain', 8, true);
+    const [s, eff] = setup(w, 'chain', WEAPON_EVOLVE_LEVEL, true);
     assert.eq(eff.evoForkOnSuper, true, '이 테스트의 전제 = 상성 갈라짐');
     //  각인은 슬롯 앞에서부터 «투자한 수»만큼 내려온다 — 체인이 몇 번 칸이든 닿게 충분히 투자한다(§4.3).
     const [FIRE] = w.data.elements.investable;
@@ -183,16 +185,18 @@ suite('weapons3 · 빔', () => {
     assert.eq(side.hp, 1e6, '두 번째 적은 count 1 이면 안 맞는다');
     assert.eq(s.a0, w.enemies.items.indexOf(t), '슬롯이 표적을 기억한다');
     // 관통 — pierce 를 주면 표적 뒤(같은 직선) 적이 맞는다
-    //   ㊲ 관통 코팅은 탄 전용 — 빔의 관통은 자기 레벨(Lv3 pierce 1)에서 온다. 코팅을 줘도 빔의 pierce 는 불변.
-    const w2 = mkWorld(); const [s2, eff2] = setup(w2, 'beam', 3, false);
-    assert.gt(eff2.pierce, 0, 'Lv3 빔의 자체 관통 > 0');
+    //   ㊲ 관통 코팅은 탄 전용 — 빔의 관통은 자기 레벨(Lv2 pierce 1 — ㊿-zn, 옛 Lv5 칸)에서 온다. 코팅을 줘도 빔의 pierce 는 불변.
+    //   ★ Lv2 부터 빔이 두 줄(count 2)이라 «직선 밖» 적도 두 번째 빔에 맞는다 — 관통만 보려고 재계산 뒤 한 줄로 덮는다(미사일 검사와 같은 방법).
+    const w2 = mkWorld(); const [s2, eff2] = setup(w2, 'beam', 2, false);
+    assert.gt(eff2.pierce, 0, 'Lv2 빔의 자체 관통 > 0');
     for (let k = 0; k < 3; k += 1) givePassive(w2, 'coating'); s2.effDirty = true; const e2 = recomputeEff(w2, s2);
     assert.eq(e2.pierce, eff2.pierce, '관통 코팅은 빔에 무효(탄 전용)');
+    e2.count = 1;
     const near = dummy(w2, w2.player.x, w2.player.y - 150); const behind = dummy(w2, w2.player.x, w2.player.y - 260); const off = dummy(w2, w2.player.x + 90, w2.player.y - 260);
     tick(w2, 3);
     assert.lt(near.hp, 1e6); assert.lt(behind.hp, 1e6, '직선 뒤 적 관통'); assert.eq(off.hp, 1e6, '직선 밖은 무피해');
     // 진화 — 갈래
-    const w3 = mkWorld(); const [s3, eff3] = setup(w3, 'beam', 8, true);
+    const w3 = mkWorld(); const [s3, eff3] = setup(w3, 'beam', WEAPON_EVOLVE_LEVEL, true);
     const c = dummy(w3, w3.player.x, w3.player.y - 150); const n1 = dummy(w3, w3.player.x + eff3.evoSplitRangePx * 0.6, w3.player.y - 150);
     tick(w3, 3);
     assert.lt(n1.hp, 1e6, '갈래가 이웃을 때린다'); assert.lt(c.hp, 1e6);
@@ -212,7 +216,7 @@ suite('weapons3 · 핀볼', () => {
     //   (사용자(2026-09-12) 「핀볼이 벽에 튕길때, 밑에 있는 HP, 경험치바를 통과?해서 반사되던데?」)
     //   ★ 짝 패시브(장기 배터리 ×3)로 수명을 늘린다 — 맨몸 Lv10(6초)은 천장을 찍고 바닥에 닿기 전에 사라져서 «바닥에서 튀는가»를
     //     못 본다(망가뜨리기 실측: 벽을 아레나로 되돌려도 이 테스트가 초록이었다 — 최대 y 는 발사 높이였을 뿐).
-    const wv = mkWorld(); for (let k = 0; k < 3; k += 1) givePassive(wv, 'battery'); setup(wv, 'pinball', 10, false);
+    const wv = mkWorld(); for (let k = 0; k < 3; k += 1) givePassive(wv, 'battery'); setup(wv, 'pinball', WEAPON_MAX_LEVEL, false);
     let loY = Infinity; let hiY = -Infinity; let rad = 0; let floorBounces = 0; const prevVy = new Map();
     for (let i = 0; i < Math.round(8 / dt); i += 1) {
       tick(wv, 1);
@@ -233,7 +237,7 @@ suite('weapons3 · 핀볼', () => {
     assert.lte(hiY + rad, floorLine, `공의 가장자리가 HP·XP 띠로 안 들어간다 — 바를 덮지 않는다 (최대 y ${hiY.toFixed(1)} + 반경 ${rad} ≤ ${floorLine})`);
     assert.gte(loY - rad, vw.arena.y, `공의 가장자리가 화면 위를 안 넘는다 (최소 y ${loY.toFixed(1)})`);
     assert.lt(loY, bandTop, `공이 상단 띠까지 올라간다 — 상단 띠의 적에게도 닿는다 (최소 y ${loY.toFixed(1)} < ${bandTop})`);
-    const w2 = mkWorld(); const [s2, eff2] = setup(w2, 'pinball', 8, true);
+    const w2 = mkWorld(); const [s2, eff2] = setup(w2, 'pinball', WEAPON_EVOLVE_LEVEL, true);
     let maxLive = 0;
     for (let i = 0; i < Math.round(eff2.lifetimeSec / dt); i += 1) { tick(w2, 1); const n = live(w2, 'pinball').length; if (n > maxLive) maxLive = n; }
     assert.gt(maxLive, 1, '멀티볼로 늘어난다'); assert.ok(maxLive <= eff2.evoMaxBalls, `상한 ${eff2.evoMaxBalls} (실제 ${maxLive})`);
@@ -246,7 +250,7 @@ suite('weapons3 · ㊽ 자동 조준은 «맞힐 수 있는 적»만 고른다 (
   test('봉인된 보스 부위에는 빔·체인·시커·옵션이 붙지 않는다 — 열린 표적이 있으면 그쪽을 친다', () => {
     for (const fam of ['beam', 'chain', 'seeker', 'drone']) {
       const w = mkWorld();
-      const [s] = setup(w, fam, 5, false);
+      const [s] = setup(w, fam, 2, false);   // ㊿-zn Lv2 = 옛 Lv5 칸
       const p = w.player;
       // 봉인 부위를 «더 가까이», 열린 잡몹을 조금 멀리 둔다 — 조준이 거리만 보면 봉인 쪽을 고른다
       const sealed = dummy(w, p.x, p.y - 120);
@@ -262,7 +266,7 @@ suite('weapons3 · ㊽ 자동 조준은 «맞힐 수 있는 적»만 고른다 (
 
   test('랜스는 보호막을 «통과»한다 — 앞을 막은 봉인 부위가 뒤의 적을 가리지 않는다', () => {
     const w = mkWorld();
-    setup(w, 'lance', 5, false);
+    setup(w, 'lance', 2, false);   // ㊿-zn Lv2 = 옛 Lv5 칸
     const p = w.player;
     const sealed = dummy(w, p.x, p.y - 120);
     sealed.isBoss = true; sealed.sealedNow = true; sealed.partId = 'guard'; sealed.partType = 'armament';

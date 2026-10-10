@@ -128,5 +128,22 @@ suite('attract/드라이버(main.js 부팅) §6.5 ㊿-s', () => {
     assert.ok(o.autoDraftDwellMs >= 1200 && o.autoDraftDwellMs <= 1212, `?demo 드래프트 체류 1200ms (${o.autoDraftDwellMs}ms)`);
     assert.ok(/— 00000008$/.test(o.tabTitle), `?demo = 고정 시드 00000008 — 탭 제목 (${o.tabTitle})`);
     assert.eq(o.humanDraftSeen, false, '?demo 드래프트에 «1 / 2 / 3 선택» 안내가 없다');
+    assert.ok(o.perfOff, '?perf 없이는 끊김 기록기도 오버레이도 없다 (㊿-zl)');
+  });
+
+  test('㊿-zl ?perf — 오버레이를 그리고 · 끊긴 프레임만 그 순간과 함께 기록하고 · 패널은 캐시를 거친다', () => {
+    const o = drive('perf');
+    assert.ok(o.perfObj, 'window.__perf 가 있다(테스터가 콘솔에서 기록을 꺼낼 수 있다)');
+    assert.eq(o.hitchesAtSmooth, 0, '16ms 간격만 흐른 동안 끊김 0');
+    assert.ok(o.hitchRecorded, '90ms 간격 한 번 = 끊김 한 건');
+    const h = o.lastHitch;
+    assert.ok(h !== null && h.intervalMs === 90 && h.state === 'PLAY' && /^s1:/.test(h.where) && h.enemies >= 0,
+      `끊김 기록에 그 순간의 상황이 붙는다 (${JSON.stringify(h)})`);
+    assert.ok(o.perfLines.some((t) => t.startsWith('PERF ')) && o.perfLines.some((t) => t.startsWith('끊김 1회')),
+      `오버레이가 그려진다 (${o.perfLines.join(' | ')})`);
+    assert.ok(o.perfLines.some((t) => t.startsWith('#1 ')), '최근 끊김 줄이 오버레이에 보인다');
+    assert.eq(o.layerCanvases, 1, '패널 캐시 캔버스 한 장(본 캔버스와 같은 크기)');
+    assert.ok(o.layerPanelText && !o.screenPanelText, '패널 글자는 캐시에 그려지고, 본 화면에는 찍힌다(drawImage)');
+    assert.gt(o.drawImages, 300, `프레임마다 캐시를 찍는다 (${o.drawImages}회)`);
   });
 });

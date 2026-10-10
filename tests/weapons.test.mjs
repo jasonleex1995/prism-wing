@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { suite, test, assert, loadData } from '../tools/test.mjs';
+import { WEAPON_EVOLVE_LEVEL, WEAPON_MAX_LEVEL } from '../src/core/schema.mjs';
 import {
   createWorld, recomputeEff, giveWeapon, levelUpWeapon, spawnPlayerBullet, spawnEnemy, spawnEnemyBullet,
 } from '../src/core/state.js';
@@ -107,7 +108,7 @@ suite('weapons/forward', () => {
 
   test('spreadDeg 균등·대칭 (count 2 → ±spreadDeg/2, 간격 = spreadDeg)', () => {
     const w = mkWorld();
-    const { s, eff } = setup(w, 'forward', 5, false);   // Lv5: count 2 · spreadDeg 6
+    const { s, eff } = setup(w, 'forward', 2, false);   // Lv2: count 2 · spreadDeg 6 (㊿-zn — 옛 Lv5 칸)
     assert.eq(eff.count, 2, 'Lv5 count = 2');
     assert.gt(eff.spreadDeg, 0, 'Lv5 spreadDeg > 0');
     eff.jitterDeg = 0;                                  // 산포만 격리 (jitter 제거)
@@ -209,7 +210,7 @@ suite('weapons/fan', () => {
 
   test('경계: 최대 레벨 다발도 균등 (Lv8 count·arcDeg)', () => {
     const w = mkWorld();
-    const { s, eff } = setup(w, 'fan', 8, true);
+    const { s, eff } = setup(w, 'fan', WEAPON_EVOLVE_LEVEL, true);
     fan.update(w, s, eff, dt);
     const b = liveBullets(w).map(headingDeg);
     assert.eq(b.length, eff.count, 'Lv8 count 만큼');
@@ -220,7 +221,7 @@ suite('weapons/fan', () => {
   test('onExpire 폭발은 evolved 일 때만 (반경 안 적에 피해)', () => {
     // evolved: 반경 안 적 hp 감소
     const we = mkWorld();
-    const e = setup(we, 'fan', 8, true);
+    const e = setup(we, 'fan', WEAPON_EVOLVE_LEVEL, true);
     const be = spawnPlayerBullet(we, e.s, e.eff, 600, 400, 0, 0, 1);
     const near = addEnemy(we, 600 + e.eff.evoBlastRadius * 0.5, 400);   // 반경 안
     const hp0 = near.hp;
@@ -229,7 +230,7 @@ suite('weapons/fan', () => {
 
     // 비evolved: 같은 배치라도 폭발 없음
     const wn = mkWorld();
-    const n = setup(wn, 'fan', 7, false);              // Lv7: 진화 전
+    const n = setup(wn, 'fan', WEAPON_EVOLVE_LEVEL - 1, false);              // Lv7: 진화 전
     const bn = spawnPlayerBullet(wn, n.s, n.eff, 600, 400, 0, 0, 1);
     const stay = addEnemy(wn, 605, 400);
     const shp = stay.hp;
@@ -239,7 +240,7 @@ suite('weapons/fan', () => {
 
   test('경계: evoBlastRadius 밖의 적은 폭발에 무피해', () => {
     const w = mkWorld();
-    const { s, eff } = setup(w, 'fan', 8, true);
+    const { s, eff } = setup(w, 'fan', WEAPON_EVOLVE_LEVEL, true);
     const b = spawnPlayerBullet(w, s, eff, 600, 400, 0, 0, 1);
     const far = addEnemy(w, 600 + eff.evoBlastRadius + 30, 400);        // 반경 밖 (적 반경 감안 여유)
     const hp0 = far.hp;
@@ -256,7 +257,7 @@ suite('weapons/fan', () => {
 
     giveWeapon(w, 'fan');
     const s = slotOf(w, 'fan');
-    while (s.level < 8) levelUpWeapon(w, s.index);      // Lv8 = 진화
+    while (s.level < WEAPON_EVOLVE_LEVEL && levelUpWeapon(w, s.index));      // 진화 레벨(㊿-zm Lv5 · 옛 Lv8)까지 — 못 오르면 멈춘다(무한 루프 금지)
     const eff = recomputeEff(w, s);
     s.cooldownT = 1e9;                                  // 이 창에서 fan 자동발사 봉쇄 (수동 탄만 만료 측정)
 
@@ -354,19 +355,19 @@ suite('weapons/seeker', () => {
     const we = mkWorld();
     const a = addEnemy(we, 660, 500);
     const b = addEnemy(we, 665, 502);
-    const e = setup(we, 'seeker', 3, true);            // Lv3 count 2 · evolved distinct
-    assert.eq(e.eff.count, 2, 'Lv3 count = 2');
+    const e = setup(we, 'seeker', 2, true);            // Lv2 count 3 · evolved distinct (㊿-zn — 옛 Lv5 칸)
+    assert.gte(e.eff.count, 2, 'Lv2 다발(count ≥ 2)');
     e.s.cooldownT = 0;
     seeker.update(we, e.s, e.eff, dt);
     const shots = liveBullets(we);
-    assert.eq(shots.length, 2, '2발 발사');
+    assert.eq(shots.length, e.eff.count, `${e.eff.count}발 발사`);
     assert.ne(shots[0].target, shots[1].target, 'evolved → 서로 다른 타겟');
     assert.gte(Math.min(shots[0].target, shots[1].target), 0, '둘 다 유효 타겟');
 
     // 비evolved: 2발이 같은 최근접을 겨눈다
     const wn = mkWorld();
     addEnemy(wn, 660, 500); addEnemy(wn, 665, 502);
-    const n = setup(wn, 'seeker', 3, false);
+    const n = setup(wn, 'seeker', 2, false);
     n.s.cooldownT = 0;
     seeker.update(wn, n.s, n.eff, dt);
     const sn = liveBullets(wn);
@@ -433,7 +434,7 @@ suite('weapons/boomerang', () => {
 
   test('진화 격리(체인 리턴): evolved 귀환은 최근접 적을 경유(target 확보), 비evolved 는 곧장 플레이어로', () => {
     const we = mkWorld();
-    const e = setup(we, 'boomerang', 5, true);            // Lv5 evolved
+    const e = setup(we, 'boomerang', 2, true);            // Lv2(㊿-zn — 옛 Lv5 칸) · evolved 강제
     e.s.cooldownT = 1e9;
     const p = we.player;
     const en = addEnemy(we, p.x + 120, p.y - 40);
@@ -444,7 +445,7 @@ suite('weapons/boomerang', () => {
     assert.eq(b.target, en.idx, '최근접 적을 경유 타겟으로');
 
     const wn = mkWorld();
-    const n = setup(wn, 'boomerang', 5, false);
+    const n = setup(wn, 'boomerang', 2, false);
     n.s.cooldownT = 1e9;
     const pn = wn.player;
     addEnemy(wn, pn.x + 120, pn.y - 40);
@@ -458,7 +459,7 @@ suite('weapons/boomerang', () => {
     // 회귀 — 재획득이 직전 적을 제외하지 않으면 아직 rr 안인 같은 적에 evoChainCount 를 몰아
     //   ~3틱만에 소진해 체인이 한 적으로 붕괴했다. s2(직전 경유 적) 제외로 다음 적으로 진행.
     const w = mkWorld();
-    const e = setup(w, 'boomerang', 8, true);            // Lv8 evolved (evoChainCount 3)
+    const e = setup(w, 'boomerang', WEAPON_EVOLVE_LEVEL, true);            // Lv8 evolved (evoChainCount 3)
     e.s.cooldownT = 1e9;
     const p = w.player;
     const A = addEnemy(w, p.x, p.y - 100);               // 가까운 적
@@ -512,7 +513,7 @@ suite('weapons/aura', () => {
   //   탄의 slowMul 과 같은 규약이어야 한다: 매 틱 세팅 → 소비 → 1 로 되돌림(step.moveBullets 가 소유).
   test('구역을 벗어나면 원속도로 돌아온다 — 배율은 매 틱 되돌려진다 (㊿-p)', () => {
     const w = mkWorld();
-    const { s, eff } = setup(w, 'aura', 10, false);
+    const { s, eff } = setup(w, 'aura', WEAPON_MAX_LEVEL, false);
     const p = w.player;
     const en = addEnemy(w, p.x, p.y - eff.radius * 0.5);
     aura.update(w, s, eff, dt);
@@ -524,19 +525,24 @@ suite('weapons/aura', () => {
     assert.eq(en.fieldSlowMul, 1, '구역 밖 = 원속도');
   });
 
-  test('감속이 레벨마다 계속 오르고, 진화 칸(Lv8)에서 한 단계 더 오른다 — Lv10 65% (㊿-p · ㊿-r)', () => {
+  test('감속이 레벨마다 계속 오르고, 진화 칸에서 한 단계 더 오른다 — 최대 레벨 65% (㊿-p · ㊿-r · ㊿-zn)', () => {
     const d = loadData();
     const w = d.weapons.weapons.find((x) => x.family === 'aura');
     const c = []; let v = w.base.slowMul;
-    for (let i = 0; i < 10; i += 1) { if (w.levels[i].slowMul !== undefined) v = w.levels[i].slowMul; c.push(v); }
-    assert.eq(c.length, 10, '10 레벨');
-    for (let i = 1; i < 10; i += 1) assert.gt(c[i - 1], c[i], `Lv${i + 1} 이 Lv${i} 보다 강한 감속 (계속 상승)`);
-    // 사용자(2026-09-11): 「a + 진화 + 15%로 그러면 가자!」 — 곡선은 레벨마다 5%p, 진화 구간(Lv8~10)은 그 곡선 + 15%p
-    for (let i = 0; i < 7; i += 1) assert.near(c[i], 1 - 0.05 * (i + 1), 1e-9, `Lv${i + 1} = 감속 ${5 * (i + 1)}%`);
-    for (let i = 7; i < 10; i += 1) assert.near(c[i], 1 - 0.05 * (i + 1) - 0.15, 1e-9, `Lv${i + 1}(진화) = 곡선 ${5 * (i + 1)}% + 15%p`);
-    assert.near(c[9], 0.35, 1e-9, 'Lv10 = ×0.35 (감속 65%)');
+    for (let i = 0; i < WEAPON_MAX_LEVEL; i += 1) { if (w.levels[i].slowMul !== undefined) v = w.levels[i].slowMul; c.push(v); }
+    assert.eq(c.length, WEAPON_MAX_LEVEL, `${WEAPON_MAX_LEVEL} 레벨`);
+    for (let i = 1; i < c.length; i += 1) assert.gt(c[i - 1], c[i], `Lv${i + 1} 이 Lv${i} 보다 강한 감속 (계속 상승)`);
+    // 사용자(2026-09-11): 「a + 진화 + 15%로 그러면 가자!」 — 곡선은 옛 레벨마다 5%p, 진화 구간은 그 곡선 + 15%p.
+    //   ★ ㊿-zm·㊿-zn — 새 Lv k 는 옛 표의 OLD[k−1] 레벨 칸 그대로다. 값은 옛 곡선에서 한 글자도 안 바뀌었다.
+    const OLD = [1, 5, 8, 10];          // ㊿-zn — 옛 10단계 표의 1·5·8·10번째 칸 (㊿-zm 은 1·3·5·7·8·10)
+    assert.eq(OLD.length, WEAPON_MAX_LEVEL, '새 레벨 수 = 옛 표에서 고른 칸 수');
+    for (let i = 0; i < c.length; i += 1) {
+      const evo = i + 1 >= WEAPON_EVOLVE_LEVEL;
+      assert.near(c[i], 1 - 0.05 * OLD[i] - (evo ? 0.15 : 0), 1e-9, `Lv${i + 1}(옛 Lv${OLD[i]}) = 감속 ${5 * OLD[i]}%${evo ? ' + 15%p (진화)' : ''}`);
+    }
+    assert.near(c[c.length - 1], 0.35, 1e-9, `Lv${WEAPON_MAX_LEVEL} = ×0.35 (감속 65%)`);
     assert.eq(Object.prototype.hasOwnProperty.call(w.evolution.params, 'evoSlowMul'), false,
-      '★ evoSlowMul 은 없다 — 곡선을 «대신»해 Lv8~10 칸을 죽이던 키(㊿-r 삭제)');
+      '★ evoSlowMul 은 없다 — 곡선을 «대신»해 진화 뒤 칸을 죽이던 키(㊿-r 삭제)');
   });
 
   // ★ v1.10 ㊿-o — 진화는 «완전 정지»가 아니라 «더 강한 감속»이다. ㊿-r 부터 그 값은 레벨 칸(Lv8~10)이 직접 갖는다.
@@ -544,7 +550,7 @@ suite('weapons/aura', () => {
   //   (사용자 2026-09-08: 「펄스 필드가 진화해버리면 모든 탄이 멈춰서 게임이 너무 쉬워져」).
   test('진화(싱귤래리티, Lv8) = 반경 안 적 탄이 «기어간다» — 멈추지는 않는다, 무피해, 진화 직전(Lv7)보다 강하다', () => {
     const w = mkWorld();
-    const { s, eff } = setup(w, 'aura', 8, true);            // 진화 = Lv8 = 한 단계 더 오른 감속 + 끌어당김
+    const { s, eff } = setup(w, 'aura', WEAPON_EVOLVE_LEVEL, true);            // 진화 = Lv8 = 한 단계 더 오른 감속 + 끌어당김
     const p = w.player;
     const inB = spawnEnemyBullet(w, 'pelletS', p.x, p.y - eff.radius * 0.5, 0, 100);
     const en = addEnemy(w, p.x, p.y - 1);
@@ -554,7 +560,7 @@ suite('weapons/aura', () => {
     assert.gt(inB.slowMul, 0, '★ 0 이 아니다 — 탄은 여전히 «온다»(무적 장치 금지)');
     assert.eq(en.hp, h0, '진화도 무피해(순수 제어)');
     const w2 = mkWorld();
-    const su = setup(w2, 'aura', 7, false);
+    const su = setup(w2, 'aura', WEAPON_EVOLVE_LEVEL - 1, false);
     const b2 = spawnEnemyBullet(w2, 'pelletS', w2.player.x, w2.player.y - 1, 0, 100);
     aura.update(w2, su.s, su.eff, dt);
     assert.lt(inB.slowMul, b2.slowMul, `진화(Lv8)가 진화 직전 Lv7(×${b2.slowMul}) 보다 강한 감속이다`);
@@ -592,7 +598,7 @@ suite('weapons/nova', () => {
   //   삭제된 기능을 이름이 계속 주장하면 그 자리가 다음 사람이 의미를 발명하는 자리가 된다.
   test('진화(슈퍼노바): 2단 링이 더 멀리 닿고, 닿은 적이 더 오래 굳는다', () => {
     const w = mkWorld();
-    const { s, eff } = setup(w, 'nova', 8, true);
+    const { s, eff } = setup(w, 'nova', WEAPON_EVOLVE_LEVEL, true);
     const p = w.player;
     assert.gt(eff.evoRing2Radius, eff.radius, '2단 링이 더 크다');
     assert.gt(eff.evoActionSlowSec, eff.actionSlowSec, '진화 감속이 더 길다');
@@ -647,7 +653,7 @@ suite('weapons/lance', () => {
 
   test('진화(레일건): 사거리 밖·pierce 초과도 전부 꿴다', () => {
     const w = mkWorld();
-    const { s, eff } = setup(w, 'lance', 8, true);
+    const { s, eff } = setup(w, 'lance', WEAPON_EVOLVE_LEVEL, true);
     const p = w.player;
     const list = [];
     for (let k = 0; k < eff.pierce + 3; k += 1) list.push(addEnemy(w, p.x, p.y - 40 - k * 40));

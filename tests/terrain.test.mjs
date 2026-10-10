@@ -8,7 +8,7 @@
  *            inertia: 안에서 방향을 뒤집으면 vx 가 «서서히» 뒤집힌다(tau) · 밖에서는 즉시
  *            heat: fullSec 만에 차고 → stallSec 스턴 → 0 · 밖에서 coolSec 에 식는다 · 스턴 중엔 안 찬다
  *   무해   — 어느 지형 안에 서 있어도 HP 가 줄지 않는다(피해 0 = 사용자 결정 「유틸 방해」)
- *   저항   — 패시브 «자세 안정기»(terrainResist)가 세 지형의 효과를 (1 − Σ) 배로 줄이고 Lv10 은 면역 · 탄의 둔화는 그대로 (§8.21 ⑥ v1.10 ⑳·㉑)
+ *   저항   — 패시브 «자세 안정기»(terrainResist)가 세 지형의 효과를 (1 − Σ) 배로 줄이고 만렙(㊿-zm Lv5 · 옛 Lv10)은 면역 · 탄의 둔화는 그대로 (§8.21 ⑥ v1.10 ⑳·㉑)
  *   결정성 — 같은 시드 = 같은 위치(rng.terrain)
  */
 
@@ -224,9 +224,10 @@ suite('terrain — 저항 패시브 «자세 안정기» (§8.21 ⑥ v1.10 ⑳·
     assert.near(w.stats.terrainResist, def.values[lv - 1], 1e-9, `Σ = Lv${lv} 값`);
     return 1 - def.values[lv - 1];
   }
-  const MID = 5;
+  //   ★ ㊿-zm — 패시브가 5단계가 되어 옛 MID 5 는 «만렙 = 면역»이 됐다. 중간은 데이터의 절반(올림)으로 잡는다(5단계 → Lv3).
+  const MID = Math.ceil(loadData().passives.maxLevel / 2);
 
-  test('Lv10 = 면역 — 값이 정확히 1.00 (사용자 결정: 상한은 100%)', () => {
+  test('만렙 = 면역 — 값이 정확히 1.00 (사용자 결정: 상한은 100%)', () => {
     const w = mkRun(3, 'bog');
     const def = w.data.passives.passives.find((x) => x.stat === 'terrainResist');
     assert.eq(def.values[w.data.passives.maxLevel - 1], 1, '만렙 = 1.00');
@@ -264,7 +265,7 @@ suite('terrain — 저항 패시브 «자세 안정기» (§8.21 ⑥ v1.10 ⑳·
       '장판 안이어도 탄의 둔화는 깎이지 않는다 — 들어갔다고 빨라지지 않는다');
   });
 
-  test('㊿-zc 면역(Lv10)이면 둔화 배지도 안 켜진다 — 안 느려지는데 표시만 켜지면 화면이 거짓말한다', () => {
+  test('㊿-zc 면역(만렙)이면 둔화 배지도 안 켜진다 — 안 느려지는데 표시만 켜지면 화면이 거짓말한다', () => {
     const w = mkRun(3, 'bog');
     raise(w, w.data.passives.maxLevel);
     const t = standInFirst(w);
@@ -286,7 +287,7 @@ suite('terrain — 저항 패시브 «자세 안정기» (§8.21 ⑥ v1.10 ⑳·
     const DUR = 2.5;
     const WANT = Math.round(DUR / dt);                      // 탄 둔화가 온전히 걸려야 하는 틱 수
     //  저항 전 레벨 + 면역까지 — 「경계」는 레벨을 가리지 않는다
-    for (const lv of [1, 5, w0.data.passives.maxLevel - 1, w0.data.passives.maxLevel]) {
+    for (const lv of [1, MID, w0.data.passives.maxLevel - 1, w0.data.passives.maxLevel]) {
       const w = mkRun(3, 'bog');
       raise(w, lv);
       const t = standInFirst(w);

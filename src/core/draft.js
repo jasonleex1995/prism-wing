@@ -28,7 +28,7 @@ const CAT_PASSIVE = 'passive';
 const CAT_RESUPPLY = 'resupply';
 const CAT_TRAIT = 'trait';       // §11.6(v1.10 ⑲) 보스 특성 — 별도 드래프트(buildTraitDraft)
 
-const MAX_WEAPON_LEVEL = WEAPON_MAX_LEVEL;   // §9.5(v1.10 ⑱) — Lv10 종료. Lv8 = 진화(WEAPON_EVOLVE_LEVEL), Lv9·10 = 진화체 강화
+const MAX_WEAPON_LEVEL = WEAPON_MAX_LEVEL;   // §9.5(v1.10 ㊿-zm) — Lv6 종료. Lv5 = 진화(WEAPON_EVOLVE_LEVEL), Lv6 = 진화체 강화 (옛 Lv10 · Lv8 · Lv9·10)
 
 // ---------------------------------------------------------------------------
 // 유효 후보 (§11.1 — 무효 카드는 애초에 풀에 없다)
@@ -125,9 +125,9 @@ export function candidates(world) {
   for (let i = 0; i < world.slots.length; i += 1) {
     const s = world.slots[i];
     if (s.weaponId === null) continue;
-    if (s.level >= MAX_WEAPON_LEVEL) continue;              // §11.1 — Lv10 이면 그 카드 제외
-    // §9.5(v1.5) — Lv7→Lv8 진화 카드는 «짝 패시브»가 Lv≥threshold 일 때만 등장한다(뱀서식).
-    //   짝이 부족하면 진화 카드를 내지 않는다 → 그 무기는 Lv7 에서 멈춘다. Lv9·10 은 진화 뒤에만 온다(구조상 자동).
+    if (s.level >= MAX_WEAPON_LEVEL) continue;              // §11.1 — 최대 레벨이면 그 카드 제외
+    // §9.5(v1.5) — 진화 카드(㊿-zm Lv4→Lv5)는 «짝 패시브»가 Lv≥threshold 일 때만 등장한다(뱀서식).
+    //   짝이 부족하면 진화 카드를 내지 않는다 → 그 무기는 진화 직전 레벨에서 멈춘다. 진화체 강화(Lv6)는 진화 뒤에만 온다(구조상 자동).
     const isEvo = s.level + 1 === WEAPON_EVOLVE_LEVEL;
     if (isEvo) {
       const req = world.weaponDefs[s.family].evolution.requiresPassive;
@@ -148,12 +148,14 @@ export function candidates(world) {
       if (lv >= rp.elementCapPerElement) continue;          // §4.2 — 개별 상한 도달
       // §11.1 — 속성 레벨 ≥ 현재 무기 수 → 그 속성 카드 제외 (죽은 투자 차단)
       if (d.elementLevelOfferRequiresWeaponCount && lv >= nWeapons) continue;
+      // ★ ㊿-zn — 카드 한 장 = 투자 elementLevelStep 단계(개별 상한에서 멈춘다). 「앞 N개 무기」 프리뷰도 그 단계로 센다.
+      const to = Math.min(lv + d.elementLevelStep, rp.elementCapPerElement);
       out.push({ category: CAT_ELEMENT_LEVEL, key: `${CAT_ELEMENT_LEVEL}:${el}`,
-        element: el, from: lv, to: lv + 1,
+        element: el, from: lv, to,
         // ★ prey = 이 속성이 ×2 를 넣는 상대 (결과 프리뷰 — matrix 유도, §4.1)
         prey: preyElement(world, el),
         // ★ 부여 프리뷰 = 이 한 줄이 슬롯 순서 규칙을 가르치는 유일한 지점 (§11.1 카드 표기)
-        imbuedBefore: Math.min(lv, nWeapons), imbuedAfter: Math.min(lv + 1, nWeapons),
+        imbuedBefore: Math.min(lv, nWeapons), imbuedAfter: Math.min(to, nWeapons),
         weight: cw.elementLevel * (lv === 0 ? d.elementFirstLevelBonus : 1) });
     }
   }
@@ -287,7 +289,10 @@ export function applyCard(world, card) {
     if (si >= 0) levelUpWeapon(world, si);
   } else if (card.category === CAT_ELEMENT_LEVEL) {
     const first = world.player.invest[card.element] === 0;
-    investElement(world, card.element);
+    // ★ ㊿-zn — 카드의 from → to 만큼 투자한다(한 장 = elementLevelStep 단계). 상한은 investElement 가 지킨다.
+    //   from/to 가 없는 카드(손으로 만든 카드)는 «한 장»의 단계 그대로다.
+    const steps = (typeof card.from === 'number' && typeof card.to === 'number') ? card.to - card.from : world.data.meta.draft.elementLevelStep;
+    for (let k = 0; k < steps; k += 1) investElement(world, card.element);
     // §9.9 onboarding — 속성 카드 확정 순간 그 스탠스 자동 장착. **투자 0 → 1의 최초 전이에서만**
     if (first && world.data.meta.onboarding.autoEquipFirstElement && !world.autoEquipDone) {
       world.autoEquipDone = true;

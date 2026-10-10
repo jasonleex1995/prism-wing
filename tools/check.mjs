@@ -956,7 +956,7 @@ function S2_files() {
       'weaponLevelEvolutionBonus', 'elementFirstLevelBonus', 'passiveNewBonus', 'distinctItemsPerDraft',
       'filterInvalid', 'newWeaponWhenSlotsFull', 'elementLevelOfferRequiresWeaponCount',
       'guaranteeElementCardOnFirstDraft', 'guaranteeNewWeaponUntilSlots', 'elementCardPity',
-      'fallback', 'pauseGame'], 'meta.draft');
+      'elementLevelStep', 'fallback', 'pauseGame'], 'meta.draft');
     closedKeys('S2', D.meta.draft.categoryWeights, ['newWeapon', 'weaponLevel', 'elementLevel', 'passive'], 'meta.draft.categoryWeights');
     closedKeys('S2', D.meta.draft.fallback, ['id', 'name', 'healPct'], 'meta.draft.fallback');
   }
@@ -1695,11 +1695,13 @@ function S9_structure() {
     }
   }
 
-  // (2) 무기 levels 정확히 8행 (§9.5)
+  // (2) 무기 levels 정확히 WEAPON_MAX_LEVEL 행 (§9.5 · ㊿-zm 6행 = Lv5 진화 + Lv6 강화 · 옛 10행)
   for (const w of rowsQuiet(D.weapons.weapons)) {
     if (!isObj(w)) continue;
     if (!Array.isArray(w.levels)) { V('S9', `weapons[${w.id}].levels: 배열이 아니다 (§9.5)`); continue; }
-    if (w.levels.length !== 10) V('S9', `weapons[${w.id}].levels: ${w.levels.length}행 ≠ 10행 (§9.5 v1.10 ⑱ — Lv8 진화 + Lv9·10 강화)`);
+    if (w.levels.length !== SCHEMA.WEAPON_MAX_LEVEL) {
+      V('S9', `weapons[${w.id}].levels: ${w.levels.length}행 ≠ ${SCHEMA.WEAPON_MAX_LEVEL}행 (§9.5 ㊿-zm — Lv${SCHEMA.WEAPON_EVOLVE_LEVEL} 진화 + 그 뒤 강화)`);
+    }
   }
 
   // (3) 4 ≤ elementCapTotal < 3 × elementCapPerElement (§4.2)
@@ -1788,9 +1790,9 @@ function S10_growthBudget() {
   if (isObj(pl) && num(D.passives.maxLevel) && num(pl.weaponSlots)
       && num(pl.elementCapTotal) && num(pl.passiveSlots)) {
     const newWeapon = pl.weaponSlots - 1;                    // 시작 무기 1 지급 → 6칸 중 5칸
-    const weaponLevel = pl.weaponSlots * 9;                  // Σ(무기 maxLevel−1) = 6무기 × (10−1) (v1.10 ⑱)
-    const elementLevel = pl.elementCapTotal;                 // elementCapTotal
-    const passive = pl.passiveSlots * D.passives.maxLevel - 1;   // Σ(패시브 maxLevel) = 6칸 × Lv10 − 시작 짝 패시브 1(공짜, ㉚)
+    const weaponLevel = pl.weaponSlots * (SCHEMA.WEAPON_MAX_LEVEL - 1);   // Σ(무기 maxLevel−1) = 6무기 × (4−1) (㊿-zn · ㊿-zm ×(6−1) · 옛 ×(10−1))
+    const elementLevel = Math.ceil(pl.elementCapTotal / D.meta.draft.elementLevelStep);   // 속성 픽 = 합계 상한 ÷ 카드 한 장의 단계(㊿-zn 12 ÷ 2 = 6)
+    const passive = pl.passiveSlots * D.passives.maxLevel - 1;   // Σ(패시브 maxLevel) = 6칸 × Lv3 − 시작 짝 패시브 1(공짜, ㉚) (㊿-zn · ㊿-zm Lv5 · 옛 Lv10)
     const derived = newWeapon + weaponLevel + elementLevel + passive;
     if (num(g.minTotalSink) && derived !== g.minTotalSink) {
       V('S10', `growthBudget.minTotalSink = ${g.minTotalSink} ≠ 데이터 유도값 ${derived} `
@@ -4395,7 +4397,7 @@ function S68_growthBudget() {
   const want = {
     '새 무기': p.weaponSlots - 1,                          // 시작 무기 1 지급
     '무기 레벨': p.weaponSlots * (wlv - 1),
-    '속성 레벨': p.elementCapTotal,
+    '속성 레벨': Math.ceil(p.elementCapTotal / D.meta.draft.elementLevelStep),   // ㊿-zn 카드 한 장 = elementLevelStep 단계
     '패시브': p.passiveSlots * plv,                        // 획득 픽 + 레벨 픽
   };
   const sink = want['새 무기'] + want['무기 레벨'] + want['속성 레벨'] + want['패시브'] - 1;  // ㉚ 짝 패시브 Lv1 공짜
